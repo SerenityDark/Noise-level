@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>다같이 온(ON) 마당 · 운동회 소음 경보 시스템</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+    .glass-card { background: rgba(255,255,255,0.95); border: 1px solid rgba(226,232,240,0.9); }
+    .dark .glass-card { background: rgba(30,41,59,0.95); border: 1px solid rgba(51,65,85,0.9); }
+    .badge-off { opacity: .35; filter: grayscale(.6); }
+    .badge-on { opacity: 1; box-shadow: 0 0 0 3px rgba(0,0,0,.08); transform: scale(1.03); }
+    @keyframes flash { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+    .flash { animation: flash .6s ease-in-out infinite; }
+    .row-hit { background: rgba(168,85,247,.18) !important; transition: background .3s; }
+    input[type=range] { width: 100%; cursor: pointer; }
+  </style>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+
+  <nav class="sticky top-0 z-50 bg-white/85 dark:bg-slate-900/85 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-blue-600 text-white rounded-xl"><i data-lucide="activity" class="w-6 h-6"></i></div>
+        <div>
+          <span class="font-extrabold text-lg block leading-none text-slate-900 dark:text-white">다같이 온(ON) 마당</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">운동회 소음 경보 시스템</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="soundToggleBtn" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold">
+          <i data-lucide="volume-2" id="soundIcon" class="w-4 h-4 text-emerald-500"></i>
+          <span id="soundText">경보음 ON</span>
+        </button>
+        <button id="themeToggle" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400">
+          <i data-lucide="moon" id="themeIcon" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+    <header class="text-center max-w-3xl mx-auto space-y-2">
+      <h1 class="font-black text-slate-900 dark:text-white leading-tight">
+        <span class="block text-4xl sm:text-5xl text-blue-600 dark:text-blue-400">다같이 온(ON) 마당</span>
+        <span class="block text-2xl sm:text-3xl mt-2">운동회 소음 경보 시스템</span>
+      </h1>
+      <p class="text-slate-600 dark:text-slate-400 text-sm sm:text-base">
+        <strong>갑자기 커지는 소리(미분)</strong>와 <strong>오래 이어지는 큰 소리(적분)</strong>를 따로 감지하고,
+        이미 시끄러운 상태에서 다시 소리가 폭발하면 <strong>🔴 복합 위험 사이렌</strong>을 울립니다.
+      </p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- 파일 & 재생 -->
+      <section class="lg:col-span-5 glass-card rounded-2xl p-6 shadow-sm space-y-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-600"></i> 미디어 파일 선택
+          </h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400">동영상(MP4 등) 또는 음성(MP3 등) 파일의 소리를 분석합니다</p>
+        </div>
+
+        <label class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-5 cursor-pointer hover:border-blue-500 bg-slate-50/50 dark:bg-slate-800/40 transition text-center">
+          <i data-lucide="file-audio" class="w-9 h-9 text-slate-400 mb-2"></i>
+          <span id="uploadBtnText" class="text-sm font-semibold text-slate-700 dark:text-slate-200">동영상 / 음성 파일 선택</span>
+          <span class="text-xs text-slate-400 mt-1">video/*, audio/*</span>
+          <input type="file" id="fileInput" accept="video/*,audio/*" class="hidden">
+        </label>
+
+        <button id="demoBtn" class="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center gap-1.5">
+          <i data-lucide="play-circle" class="w-4 h-4"></i> 운동회 샘플 데이터(3분)로 테스트하기
+        </button>
+
+        <div class="pt-3 border-t border-slate-200 dark:border-slate-800 text-xs space-y-1">
+          <div class="flex justify-between gap-2"><span class="text-slate-500">파일명</span><span id="fileName" class="font-medium truncate max-w-[220px]">-</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">길이</span><span id="fileDuration" class="font-medium">-</span></div>
+        </div>
+
+        <div id="mediaBox" class="hidden"></div>
+
+        <div class="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center gap-2">
+            <button id="playBtn" class="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold flex items-center justify-center gap-1.5">
+              <i data-lucide="play" class="w-4 h-4"></i><span>재생하며 경보 듣기</span>
+            </button>
+            <button id="rewindBtn" title="처음으로" class="p-2 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600">
+              <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            </button>
+            <select id="speedSel" class="text-xs rounded-lg bg-white dark:bg-slate-700 border-0 py-2 px-2">
+              <option value="1">1배속</option>
+              <option value="2">2배속</option>
+              <option value="5" selected>5배속</option>
+              <option value="10">10배속</option>
+            </select>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">재생하면 시간 순서대로 경보가 실제로 울립니다. 그래프의 세로선이 현재 위치입니다.</p>
+        </div>
+      </section>
+
+      <!-- 기준치 설정 -->
+      <section class="lg:col-span-7 glass-card rounded-2xl p-6 shadow-sm space-y-4">
+        <div class="border-b border-slate-200 dark:border-slate-800 pb-3 flex items-center justify-between gap-2">
+          <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <i data-lucide="sliders-horizontal" class="w-5 h-5 text-blue-600"></i> 학교별 경보 기준 설정
+          </h2>
+          <span class="text-xs text-slate-400 text-right">바꾸면 바로 다시 분석</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="bg-yellow-50/80 dark:bg-yellow-950/30 p-4 rounded-xl border border-yellow-200 dark:border-yellow-900/50 space-y-2">
+            <div class="font-bold text-yellow-900 dark:text-yellow-200 text-sm">🟡 A. 돌발 급증 (미분)</div>
+            <p class="text-[11px] text-yellow-800/80 dark:text-yellow-300/80">0.5초 사이 소리가 빠르게 커지고, 그 상태가 잠깐 유지될 때. 문 쾅 같은 순간 충격음은 무시합니다.</p>
+            <div class="flex justify-between text-xs"><span>변화율 기준</span><b id="val_aRate" class="font-mono"></b></div>
+            <input type="range" id="in_aRate" min="10" max="80" step="2" value="30" class="accent-yellow-500">
+            <div class="flex justify-between text-xs"><span>유지 시간</span><b id="val_aHold" class="font-mono"></b></div>
+            <input type="range" id="in_aHold" min="0.3" max="3" step="0.1" value="1" class="accent-yellow-500">
+          </div>
+
+          <div class="bg-orange-50/80 dark:bg-orange-950/30 p-4 rounded-xl border border-orange-200 dark:border-orange-900/50 space-y-2">
+            <div class="font-bold text-orange-900 dark:text-orange-200 text-sm">🟠 B. 지속 고소음</div>
+            <p class="text-[11px] text-orange-800/80 dark:text-orange-300/80">평소보다 큰 소리가 정해진 시간 넘게 이어질 때.</p>
+            <div class="flex justify-between text-xs"><span>배경 대비</span><b id="val_bDb" class="font-mono"></b></div>
+            <input type="range" id="in_bDb" min="5" max="40" step="1" value="20" class="accent-orange-500">
+            <div class="flex justify-between text-xs"><span>지속 시간</span><b id="val_bDur" class="font-mono"></b></div>
+            <input type="range" id="in_bDur" min="5" max="120" step="5" value="30" class="accent-orange-500">
+          </div>
+
+          <div class="bg-sky-50/80 dark:bg-sky-950/30 p-4 rounded-xl border border-sky-200 dark:border-sky-900/50 space-y-2">
+            <div class="font-bold text-sky-900 dark:text-sky-200 text-sm">🔵 C. 누적 피로 (적분)</div>
+            <p class="text-[11px] text-sky-800/80 dark:text-sky-300/80">최근 구간의 평균 소리 크기(넓이 ÷ 구간 길이)가 기준치를 넘는 순간 한 번 알림. 분석 길이보다 구간이 길면 판정하지 않습니다.</p>
+            <div class="flex justify-between text-xs"><span>누적 구간</span><b id="val_cWin" class="font-mono"></b></div>
+            <input type="range" id="in_cWin" min="0.5" max="10" step="0.5" value="2" class="accent-sky-500">
+            <div class="flex justify-between items-center text-xs gap-2">
+              <span>기준치 (구간 평균)</span>
+              <span class="flex items-center gap-1">
+                <input type="number" id="num_cAvg" min="20" max="100" step="0.5" value="58"
+                       class="w-20 text-right font-mono font-bold rounded-md px-1.5 py-0.5 bg-white dark:bg-slate-800 border border-sky-300 dark:border-sky-700">
+                <span class="font-mono">dB</span>
+              </span>
+            </div>
+            <input type="range" id="in_cAvg" min="20" max="100" step="0.5" value="58" class="accent-sky-500">
+            <div class="text-[11px] text-sky-800 dark:text-sky-300 text-right">누적량(넓이)으로 환산하면 약 <b id="cIntEq" class="font-mono">-</b> dB·초</div>
+            <span id="val_cAvg" class="hidden"></span>
+          </div>
+
+          <div class="bg-slate-100/80 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+            <div class="font-bold text-slate-800 dark:text-slate-200 text-sm">🔁 재경보 대기 시간</div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">같은 종류의 경보음이 연달아 울리지 않도록 기다리는 시간. 기록은 계속 남습니다.</p>
+            <div class="flex justify-between text-xs"><span>대기 시간</span><b id="val_cool" class="font-mono"></b></div>
+            <input type="range" id="in_cool" min="0" max="120" step="5" value="30" class="accent-slate-500">
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 현재 상태 -->
+    <section class="glass-card rounded-2xl p-5 shadow-sm space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <i data-lucide="radar" class="w-5 h-5 text-blue-600"></i> 현재 경보 상태
+        </h2>
+        <div class="text-xs font-mono text-slate-500 dark:text-slate-400 flex gap-4">
+          <span>시각 <b id="liveTime" class="text-slate-800 dark:text-slate-100">-</b></span>
+          <span>소음 <b id="liveLevel" class="text-slate-800 dark:text-slate-100">-</b></span>
+          <span>배경 <b id="liveBg" class="text-slate-800 dark:text-slate-100">-</b></span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div id="badgeA" class="badge-off transition rounded-xl p-3 bg-yellow-100 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-800">
+          <div class="text-xs font-bold text-yellow-900 dark:text-yellow-200">🟡 A 돌발 급증</div><div class="text-[11px] text-yellow-800/80 dark:text-yellow-300/80">주의 · 짧은 알림음</div>
+        </div>
+        <div id="badgeB" class="badge-off transition rounded-xl p-3 bg-orange-100 dark:bg-orange-900/40 border border-orange-300 dark:border-orange-800">
+          <div class="text-xs font-bold text-orange-900 dark:text-orange-200">🟠 B 지속 고소음</div><div class="text-[11px] text-orange-800/80 dark:text-orange-300/80">경고 · 두 번 알림음</div>
+        </div>
+        <div id="badgeC" class="badge-off transition rounded-xl p-3 bg-sky-100 dark:bg-sky-900/40 border border-sky-300 dark:border-sky-800">
+          <div class="text-xs font-bold text-sky-900 dark:text-sky-200">🔵 C 누적 피로</div><div class="text-[11px] text-sky-800/80 dark:text-sky-300/80">경고 · 낮은 알림음</div>
+        </div>
+        <div id="badgeD" class="badge-off transition rounded-xl p-3 bg-red-100 dark:bg-red-900/40 border border-red-400 dark:border-red-800">
+          <div class="text-xs font-bold text-red-900 dark:text-red-200">🔴 D 복합 위험</div><div class="text-[11px] text-red-800/80 dark:text-red-300/80">C 상태에서 A 발생 · 사이렌</div>
+        </div>
+      </div>
+      <div id="liveBanner" class="text-sm rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+        ▶ 재생 버튼을 누르면 시간 순서대로 경보 상태가 바뀌고 경보음이 울립니다.
+      </div>
+    </section>
+
+    <!-- 요약 + 경보 기록 -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div class="lg:col-span-4 glass-card rounded-2xl p-5 shadow-sm space-y-3">
+        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="clipboard-list" class="w-5 h-5 text-blue-600"></i> 분석 요약</h2>
+        <div id="summary" class="grid grid-cols-2 gap-2 text-center text-xs"></div>
+        <div id="summaryStats" class="text-xs text-slate-500 dark:text-slate-400 space-y-1"></div>
+      </div>
+      <div class="lg:col-span-8 glass-card rounded-2xl p-5 shadow-sm space-y-3">
+        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="list" class="w-5 h-5 text-blue-600"></i> 경보 기록</h2>
+        <div class="max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800">
+          <table class="w-full text-xs">
+            <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+              <tr><th class="text-left px-3 py-2 w-20">시각</th><th class="text-left px-3 py-2 w-28">단계</th><th class="text-left px-3 py-2">내용</th><th class="text-left px-3 py-2 w-24">경보음</th></tr>
+            </thead>
+            <tbody id="eventRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 그래프 -->
+    <section class="glass-card rounded-2xl p-6 shadow-sm">
+      <div class="mb-3">
+        <h3 class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">1. 소리 크기 L(t)</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">주황 배경 = 큰 소리가 30초 넘게 이어진 구간</p>
+      </div>
+      <div class="relative h-80 w-full"><canvas id="levelChart"></canvas></div>
+    </section>
+
+    <section class="glass-card rounded-2xl p-6 shadow-sm">
+      <div class="mb-3">
+        <h3 class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">2. 소리가 커지는 속도 (미분)</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">0.5초 평균변화율 · 빨간 점선을 넘으면 급증 후보</p>
+      </div>
+      <div class="relative h-80 w-full"><canvas id="slopeChart"></canvas></div>
+    </section>
+
+    <section class="glass-card rounded-2xl p-6 shadow-sm">
+      <div class="mb-3">
+        <h3 id="leqTitle" class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">3. 최근 2분 동안 쌓인 소리 (적분)</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">파란 선 = 최근 구간의 평균 (그래프 1 아래 넓이 ÷ 구간 길이) · 빨간 점선(기준치)을 넘는 순간 C 경보 · 파란 배경 = 기준치를 넘은 구간</p>
+      </div>
+      <div class="relative h-80 w-full"><canvas id="leqChart"></canvas></div>
+    </section>
+  </main>
+
+  <script>
+    const FRAME = 0.1;            // 분석 단위 (초)
+    const LAG = 5;                // 미분 간격 0.5초 = 5프레임
+    const B_WIN = 100;            // B 평균 구간 10초
+    const BG_WIN = 1200;          // 배경 소음 추정 구간 2분
+    const WARM = 30;              // 처음 3초는 배경 보정만
+    const TYPE_INFO = {
+      A: { name: '🟡 A 돌발 급증', cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200', color: '#eab308' },
+      B: { name: '🟠 B 지속 고소음', cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200', color: '#f97316' },
+      C: { name: '🔵 C 누적 피로', cls: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200', color: '#0ea5e9' },
+      D: { name: '🔴 D 복합 위험', cls: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200', color: '#dc2626' },
+      X: { name: '✕ 충격음 무시', cls: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400', color: '#94a3b8' },
+    };
+
+    lucide.createIcons();
+
+    // ---------- 테마 ----------
+    const themeIcon = document.getElementById('themeIcon');
+    function setThemeIcon() {
+      const dark = document.documentElement.classList.contains('dark');
+      themeIcon.setAttribute('data-lucide', dark ? 'sun' : 'moon');
+      lucide.createIcons();
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+    setThemeIcon();
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      setThemeIcon();
+      renderAll();
+    });
+
+    // ---------- 경보음 ----------
+    let isSoundEnabled = true;
+    let audioCtx = null;
+    function ensureCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+    document.getElementById('soundToggleBtn').addEventListener('click', () => {
+      isSoundEnabled = !isSoundEnabled;
+      const icon = document.getElementById('soundIcon');
+      icon.setAttribute('data-lucide', isSoundEnabled ? 'volume-2' : 'volume-x');
+      icon.setAttribute('class', 'w-4 h-4 ' + (isSoundEnabled ? 'text-emerald-500' : 'text-slate-400'));
+      document.getElementById('soundText').innerText = isSoundEnabled ? '경보음 ON' : '경보음 OFF';
+      lucide.createIcons();
+    });
+
+    function tone(freq, start, dur, type = 'square', vol = 0.15, endFreq = null) {
+      const ctx = ensureCtx();
+      const t0 = ctx.currentTime + start;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (endFreq) osc.frequency.linearRampToValueAtTime(endFreq, t0 + dur);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+      gain.gain.setValueAtTime(vol, t0 + dur - 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    }
+    function playAlert(type) {
+      if (!isSoundEnabled) return;
+      try {
+        if (type === 'A') tone(880, 0, 0.18, 'sine', 0.2);
+        if (type === 'B') { tone(660, 0, 0.18, 'square', 0.12); tone(660, 0.28, 0.18, 'square', 0.12); }
+        if (type === 'C') { tone(440, 0, 0.3, 'triangle', 0.25); tone(330, 0.35, 0.4, 'triangle', 0.25); }
+        if (type === 'D') { for (let k = 0; k < 4; k++) { tone(600, k * 0.5, 0.25, 'sawtooth', 0.15, 1200); tone(1200, k * 0.5 + 0.25, 0.25, 'sawtooth', 0.15, 600); } }
+      } catch (e) { console.warn('Audio error:', e); }
+    }
+    document.querySelectorAll('[data-preview]').forEach(btn =>
+      btn.addEventListener('click', () => playAlert(btn.dataset.preview)));
+
+    // ---------- 설정 ----------
+    const SETTINGS = {
+      aRate: v => `${v} dB/s`,
+      aHold: v => `${(+v).toFixed(1)}초`,
+      bDb: v => `+${v} dB`,
+      bDur: v => `${v}초`,
+      cAvg: v => `${(+v).toFixed(1)} dB`,
+      cWin: v => `${(+v).toFixed(1)}분`,
+      cool: v => `${v}초`,
+    };
+    function getSettings() {
+      const s = {};
+      for (const id in SETTINGS) s[id] = parseFloat(document.getElementById('in_' + id).value);
+      return s;
+    }
+    let renderQueued = false;
+    function scheduleRender() {
+      if (renderQueued) return;
+      renderQueued = true;
+      requestAnimationFrame(() => { renderQueued = false; renderAll(); });
+    }
+    for (const id in SETTINGS) {
+      const input = document.getElementById('in_' + id);
+      const label = document.getElementById('val_' + id);
+      label.innerText = SETTINGS[id](input.value);
+      input.addEventListener('input', () => { label.innerText = SETTINGS[id](input.value); scheduleRender(); });
+    }
+    // 기준치(구간 평균): 슬라이더와 숫자 칸을 서로 맞춤
+    const cAvgSlider = document.getElementById('in_cAvg');
+    const cAvgBox = document.getElementById('num_cAvg');
+    cAvgSlider.addEventListener('input', () => { cAvgBox.value = cAvgSlider.value; updateCHelper(); });
+    cAvgBox.addEventListener('input', () => {
+      const v = parseFloat(cAvgBox.value);
+      if (!Number.isFinite(v) || v < +cAvgSlider.min || v > +cAvgSlider.max) return;
+      cAvgSlider.value = v;
+      cAvgSlider.dispatchEvent(new Event('input'));
+    });
+    document.getElementById('in_cWin').addEventListener('input', updateCHelper);
+    function updateCHelper() {
+      const s = getSettings();
+      document.getElementById('cIntEq').innerText = Math.round(s.cAvg * s.cWin * 60).toLocaleString();
+    }
+    updateCHelper();
+
+    // ---------- 데이터 ----------
+    let source = null;   // { levels: Float32Array, duration, name, isDemo }
+    let result = null;
+    let media = null;
+    let mediaUrl = null;
+
+    function levelsFromBuffer(buffer) {
+      const sr = buffer.sampleRate;
+      const frameLen = Math.max(1, Math.round(sr * FRAME));
+      const n = Math.floor(buffer.length / frameLen);
+      const chans = [];
+      for (let c = 0; c < buffer.numberOfChannels; c++) chans.push(buffer.getChannelData(c));
+      const levels = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let sum = 0;
+        const off = i * frameLen;
+        for (const d of chans) for (let j = 0; j < frameLen; j++) { const v = d[off + j]; sum += v * v; }
+        const ms = sum / (frameLen * chans.length);
+        levels[i] = Math.min(100, Math.max(0, 10 * Math.log10(ms + 1e-12) + 100));
+      }
+      return levels;
+    }
+
+    // 샘플 모델: L(t) = 45 + 3·sin(πt/10) + h(t)
+    //   45 + 3·sin(πt/10) : 평소 교실 웅성거림 (20초 주기로 ±3dB)
+    //   h(t)              : 사건이 있는 구간에만 더해지는 높이
+    const DEMO_EVENTS = [
+      { name: '문 쾅',       from: 10,  to: 10.2,  add: 40 },  // 무시돼야 함
+      { name: '짧은 환호',   from: 25,  to: 28,    add: 27 },  // A
+      { name: '1분 응원',    from: 40,  to: 100,   add: 30 },  // A, B
+      { name: '비명',        from: 140, to: 143,   add: 43 },  // C 상태에서 A = D
+      { name: '책 떨어짐',   from: 150, to: 150.3, add: 38 },  // 무시돼야 함
+    ];
+    function demoH(t) {
+      for (const e of DEMO_EVENTS) if (t >= e.from - 1e-9 && t < e.to - 1e-9) return e.add;
+      return 0;
+    }
+    function makeDemoLevels() {
+      const n = Math.round(180 / FRAME);
+      const L = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const t = i * FRAME;
+        L[i] = 45 + 3 * Math.sin(Math.PI * t / 10) + demoH(t);
+      }
+      return L;
+    }
+
+    // ---------- 분석 ----------
+    function analyze(levels, s) {
+      const n = levels.length;
+      const P = new Float64Array(n + 1);
+      for (let i = 0; i < n; i++) P[i + 1] = P[i] + Math.pow(10, levels[i] / 10);
+      const leq = (i, w) => { const a = Math.max(0, i - w + 1); return 10 * Math.log10((P[i + 1] - P[a]) / (i + 1 - a)); };
+
+      const Ls = new Float32Array(n), slope = new Float32Array(n), leq10 = new Float32Array(n), avgW = new Float32Array(n), bg = new Float32Array(n);
+      const bState = new Uint8Array(n), cState = new Uint8Array(n);
+      const wFrames = Math.round(s.cWin * 60 / FRAME);
+      // C: 최근 구간 평균 = (그래프 아래 넓이) ÷ (구간 길이). 넓이는 0.1초 폭 직사각형의 합
+      const Q = new Float64Array(n + 1);
+      for (let i = 0; i < n; i++) Q[i + 1] = Q[i] + levels[i];
+      const winSec = wFrames * FRAME;
+      for (let i = 0; i < n; i++) {
+        Ls[i] = leq(i, 3);
+        leq10[i] = leq(i, B_WIN);
+        avgW[i] = i + 1 >= wFrames ? (Q[i + 1] - Q[i + 1 - wFrames]) * FRAME / winSec : NaN;
+      }
+      for (let i = 0; i < n; i++) slope[i] = i >= LAG ? (Ls[i] - Ls[i - LAG]) / (LAG * FRAME) : 0;
+
+      const events = [], bBands = [], cBands = [];
+      const riseDb = s.aRate * LAG * FRAME;
+      const holdF = Math.round(s.aHold / FRAME);
+      let curBg = null;
+      let bRun = null, bGap = null, bHyst = false, bActive = false, bStart = 0;
+      let cOn = false, cStart = 0;
+      let armed = true, cand = null, rearmRef = 0;
+
+      for (let i = 0; i < n; i++) {
+        const t = i * FRAME;
+
+        // 배경 소음: 1초마다 최근 2분 하위 10%, 큰 소리 지속 중엔 고정
+        if (curBg === null || (i % 10 === 0 && bRun === null)) {
+          const win = levels.slice(Math.max(0, i - BG_WIN + 1), i + 1).sort();
+          curBg = win[Math.floor(win.length * 0.1)];
+        }
+        bg[i] = curBg;
+        if (i < WARM) continue;
+
+        // B 지속 고소음
+        const dB = leq10[i] - curBg;
+        bHyst = bHyst ? dB >= s.bDb - 3 : dB >= s.bDb;
+        if (bHyst) { if (bRun === null) bRun = t; bGap = null; }
+        else if (bRun !== null) {
+          if (bGap === null) bGap = t;
+          if (t - bGap > 2) {
+            if (bActive) { bBands.push([bStart, t]); bActive = false; }
+            bRun = null; bGap = null;
+          }
+        }
+        if (bRun !== null && !bActive && t - bRun >= s.bDur) {
+          bActive = true; bStart = t;
+          events.push({ t, type: 'B', frame: i, msg: `10초 평균 ${leq10[i].toFixed(1)}dB (배경+${dB.toFixed(1)}) 상태가 ${s.bDur}초 이어짐` });
+        }
+        bState[i] = bActive ? 1 : 0;
+
+        // C 누적 피로
+        if (!isNaN(avgW[i])) {
+          const on = avgW[i] >= s.cAvg;
+          if (on && !cOn) {
+            cOn = true; cStart = t;
+            events.push({ t, type: 'C', frame: i, msg: `최근 ${s.cWin}분 평균 ${avgW[i].toFixed(1)}dB (기준 ${s.cAvg}dB)` });
+          } else if (!on && cOn) { cOn = false; cBands.push([cStart, t]); }
+        }
+        cState[i] = cOn ? 1 : 0;
+
+        // A 돌발 급증 (C 상태면 D)
+        if (cand) {
+          if (Ls[i] < cand.pre + riseDb * 0.6) {
+            events.push({ t: cand.t, type: 'X', frame: cand.i, msg: `${((i - cand.i) * FRAME).toFixed(1)}초 만에 잦아든 순간 소리 (최대 ${cand.peak.toFixed(1)}dB)` });
+            rearmRef = cand.pre; cand = null;
+          } else {
+            cand.peak = Math.max(cand.peak, levels[i]);
+            if (i - cand.i >= holdF) {
+              const type = cOn ? 'D' : 'A';
+              const rise = Ls[i] - cand.pre;
+              events.push({ t, type, frame: i, onset: cand.t, onsetFrame: cand.i,
+                msg: (type === 'D' ? '누적 피로 상태에서 ' : '') + `${cand.pre.toFixed(0)}→${Ls[i].toFixed(0)}dB 급증 (+${rise.toFixed(1)}dB, ${s.aHold}초 유지)` });
+              rearmRef = cand.pre; cand = null;
+            }
+          }
+        } else if (!armed) {
+          if (Ls[i] < rearmRef + riseDb * 0.5) armed = true;
+        } else if (slope[i] >= s.aRate) {
+          cand = { i, t, pre: Ls[i - LAG], peak: levels[i] };
+          armed = false;
+        }
+      }
+      const end = n * FRAME;
+      if (bActive) bBands.push([bStart, end]);
+      if (cOn) cBands.push([cStart, end]);
+
+      events.sort((a, b) => a.t - b.t);
+      const lastSound = {};
+      for (const e of events) {
+        if (e.type === 'X') { e.sound = null; continue; }
+        const last = lastSound[e.type];
+        e.sound = last === undefined || e.t - last >= s.cool;
+        if (e.sound) lastSound[e.type] = e.t;
+      }
+      return { levels, Ls, slope, leq10, avgW, bg, bState, cState, events, bBands, cBands, duration: end, wFrames };
+    }
+
+    // ---------- 그리기 ----------
+    let cursorTime = null;
+    const overlayPlugin = {
+      id: 'overlay',
+      beforeDatasetsDraw(chart, args, opts) {
+        const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
+        for (const b of (opts.bands || [])) {
+          const x1 = Math.max(left, x.getPixelForValue(b.from));
+          const x2 = Math.min(right, x.getPixelForValue(b.to));
+          if (x2 > x1) { ctx.save(); ctx.fillStyle = b.color; ctx.fillRect(x1, top, x2 - x1, bottom - top); ctx.restore(); }
+        }
+      },
+      afterDatasetsDraw(chart) {
+        if (cursorTime === null) return;
+        const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
+        const px = x.getPixelForValue(cursorTime);
+        if (px < left || px > right) return;
+        ctx.save();
+        ctx.strokeStyle = document.documentElement.classList.contains('dark') ? '#f8fafc' : '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+        ctx.restore();
+      }
+    };
+    Chart.register(overlayPlugin);
+
+    const charts = {};
+    function fmtT(t) {
+      const m = Math.floor(t / 60);
+      return `${m}:${(t - m * 60).toFixed(1).padStart(4, '0')}`;
+    }
+    function series(arr, step, mode) {
+      const out = [];
+      for (let i = 0; i < arr.length; i += step) {
+        let v = arr[i];
+        if (mode === 'max') for (let k = i + 1; k < Math.min(i + step, arr.length); k++) if (!(arr[k] <= v)) v = arr[k];
+        out.push({ x: +(i * FRAME).toFixed(2), y: Number.isFinite(v) ? +v.toFixed(1) : null });
+      }
+      return out;
+    }
+    function lineDs(label, data, color, extra = {}) {
+      return { type: 'line', label, data, borderColor: color, backgroundColor: color, borderWidth: 1.6, pointRadius: 0, tension: 0.15, spanGaps: false, ...extra };
+    }
+    function markerDs(label, evs, yFn, xFn, color, style, r) {
+      return { type: 'scatter', label, data: evs.map(e => ({ x: xFn(e), y: yFn(e) })), backgroundColor: color, borderColor: color, pointStyle: style, pointRadius: r, pointHoverRadius: r + 2, borderWidth: 2 };
+    }
+    function makeChart(id, datasets, bands, yTitle, yMin) {
+      const dark = document.documentElement.classList.contains('dark');
+      const text = dark ? '#94a3b8' : '#64748b', grid = dark ? '#334155' : '#e2e8f0';
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false,
+          interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+          plugins: {
+            legend: { position: 'top', align: 'end', labels: { color: text, usePointStyle: true, boxWidth: 10, padding: 16, font: { size: 14, weight: '600' } } },
+            tooltip: { titleFont: { size: 14 }, bodyFont: { size: 14 }, callbacks: { title: items => fmtT(items[0].parsed.x) } },
+            overlay: { bands }
+          },
+          scales: {
+            x: { type: 'linear', min: 0, max: result.duration, ticks: { color: text, maxTicksLimit: 10, font: { size: 13 }, callback: v => fmtT(v) }, grid: { display: false } },
+            y: { min: yMin, title: { display: true, text: yTitle, color: text, font: { size: 13 } }, ticks: { color: text, font: { size: 13 }, maxTicksLimit: 6 }, grid: { color: grid } }
+          }
+        }
+      });
+    }
+
+    function renderAll() {
+      if (!source) return;
+      const s = getSettings();
+      result = analyze(source.levels, s);
+      const r = result, n = r.levels.length;
+      const step = Math.max(1, Math.ceil(n / 2400));
+      const ev = t => r.events.filter(e => e.type === t);
+
+      makeChart('levelChart', [
+        markerDs('급증 경보 (A)', ev('A'), e => r.levels[e.frame], e => e.t, '#eab308', 'triangle', 10),
+        markerDs('복합 위험 (D)', ev('D'), e => r.levels[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
+        markerDs('무시한 충격음', ev('X'), e => r.levels[e.frame], e => e.t, '#64748b', 'crossRot', 10),
+        lineDs('소리 크기', series(r.levels, step, 'max'), '#3b82f6', { borderWidth: 2, backgroundColor: 'rgba(59,130,246,.12)', fill: 'origin' }),
+      ], r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)' })), '소리 크기 (dB)', 0);
+
+      makeChart('slopeChart', [
+        markerDs('급증 경보 (A)', ev('A'), e => r.slope[e.onsetFrame], e => e.onset, '#eab308', 'triangle', 10),
+        markerDs('복합 위험 (D)', ev('D'), e => r.slope[e.onsetFrame], e => e.onset, '#dc2626', 'rectRot', 12),
+        markerDs('무시한 충격음', ev('X'), e => r.slope[e.frame], e => e.t, '#64748b', 'crossRot', 10),
+        lineDs('커지는 속도', series(r.slope, step, 'max'), '#6366f1', { borderWidth: 2 }),
+        lineDs('기준선', Array.from({ length: 2 }, (_, k) => ({ x: k * r.duration, y: s.aRate })), '#ef4444', { borderDash: [8, 5], borderWidth: 2.5 }),
+      ], [], '커지는 속도 (dB/초)', undefined);
+
+      document.getElementById('leqTitle').innerText = `3. 최근 ${s.cWin}분 동안 쌓인 소리 (적분)`;
+      makeChart('leqChart', [
+        markerDs('C 경보', ev('C'), e => r.avgW[e.frame], e => e.t, '#0ea5e9', 'circle', 9),
+        markerDs('복합 위험 (D)', ev('D'), e => r.avgW[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
+        lineDs(`최근 ${s.cWin}분 평균`, series(r.avgW, step), '#0ea5e9', { borderWidth: 3 }),
+        lineDs('기준치', Array.from({ length: 2 }, (_, k) => ({ x: k * r.duration, y: s.cAvg })), '#ef4444', { borderDash: [8, 5], borderWidth: 2.5 }),
+      ], r.cBands.map(([from, to]) => ({ from, to, color: 'rgba(14,165,233,.16)' })), '평균 소리 크기 (dB)', undefined);
+      updateCHelper();
+
+      renderSummary(s);
+      renderEvents();
+      updateLive(cursorTime ?? 0, cursorTime !== null);
+    }
+
+    // 샘플 모델 표: 사건마다 실제로 나온 경보를 보여줌 (설정을 바꾸면 같이 바뀜)
+    const RESULT_LABEL = {
+      X: '<span class="text-slate-500">무시 (짧은 충격음)</span>',
+      A: '<span class="px-1.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200 font-sans font-semibold">A 급증</span>',
+      B: '<span class="px-1.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200 font-sans font-semibold">B 지속</span>',
+      D: '<span class="px-1.5 rounded bg-red-600 text-white font-sans font-bold">D 복합 위험</span>',
+    };
+    function renderDemoModel(s) {
+      const r = result;
+      document.getElementById('demoModelRows').innerHTML = DEMO_EVENTS.map(d => {
+        const hits = r.events.filter(e => {
+          if (e.type === 'C') return false;
+          const at = e.onset ?? e.t;
+          return e.type === 'B' ? e.t >= d.from && e.t <= d.to : at >= d.from - 0.6 && at <= d.to;
+        });
+        const types = [...new Set(hits.map(e => e.type))];
+        const res = types.length ? types.map(t => RESULT_LABEL[t]).join(' ') : '<span class="text-slate-400">없음</span>';
+        const isD = types.includes('D');
+        return `<tr class="border-t border-slate-100 dark:border-slate-800 ${isD ? 'bg-red-50 dark:bg-red-950/40' : ''}">
+          <td class="py-1.5 font-sans ${isD ? 'font-bold' : ''}">${d.name}</td><td>${d.from} ≤ t &lt; ${d.to}</td><td>+${d.add}</td><td>${+(d.to - d.from).toFixed(1)}초</td><td>${res}</td>
+        </tr>`;
+      }).join('');
+
+      const note = document.getElementById('demoModelNote');
+      const c = r.events.find(e => e.type === 'C');
+      const d = r.events.find(e => e.type === 'D');
+      if (c && d) {
+        note.className = 'text-sm rounded-xl px-4 py-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-slate-800 dark:text-slate-100';
+        note.innerHTML = `<b class="text-sky-700 dark:text-sky-300">${fmtT(c.t)}</b> 최근 ${s.cWin}분 평균이 <b>${r.avgW[c.frame].toFixed(1)}dB</b>로 기준치 ${s.cAvg}dB를 넘어 <b>C 누적 피로</b> 상태가 됩니다.
+          → 이 상태에서 <b class="text-red-600 dark:text-red-400">${fmtT(d.onset)}</b> 비명으로 급증(A)이 생겨 <b class="text-red-600 dark:text-red-400">D 복합 위험 사이렌</b>이 울립니다.`;
+      } else {
+        note.className = 'text-sm rounded-xl px-4 py-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-slate-800 dark:text-slate-100';
+        note.innerHTML = `지금 설정에서는 비명 때 C 누적 피로 상태가 아니어서 D 복합 위험이 생기지 않습니다. 최근 ${s.cWin}분 평균이 기준치 ${s.cAvg}dB를 넘어야 합니다. 기본값(2분, 58dB)으로 두면 D가 나옵니다.`;
+      }
+    }
+
+    function renderSummary(s) {
+      const r = result;
+      const count = t => r.events.filter(e => e.type === t).length;
+      document.getElementById('summary').innerHTML = ['A', 'B', 'C', 'D'].map(t => `
+        <div class="rounded-lg p-2.5 ${TYPE_INFO[t].cls}">
+          <div class="text-[11px]">${TYPE_INFO[t].name}</div>
+          <div class="text-xl font-black font-mono">${count(t)}</div>
+        </div>`).join('');
+      let max = 0, sumE = 0;
+      for (const v of r.levels) { if (v > max) max = v; sumE += Math.pow(10, v / 10); }
+      const leqAll = 10 * Math.log10(sumE / r.levels.length);
+      const warn = r.wFrames > r.levels.length ? `<div class="text-amber-600 dark:text-amber-400">⚠ 누적 구간(${s.cWin}분)이 분석 길이보다 길어 C는 판정되지 않았습니다.</div>` : '';
+      document.getElementById('summaryStats').innerHTML = `
+        <div>전체 등가소음도 Leq <b class="font-mono text-slate-700 dark:text-slate-200">${leqAll.toFixed(1)} dB</b> · 최고 <b class="font-mono text-slate-700 dark:text-slate-200">${max.toFixed(1)} dB</b></div>
+        <div>걸러낸 충격음 <b class="font-mono text-slate-700 dark:text-slate-200">${count('X')}건</b></div>${warn}`;
+    }
+
+    function renderEvents() {
+      const rows = result.events.map((e, k) => `
+        <tr id="ev_${k}" class="border-t border-slate-100 dark:border-slate-800 ${e.type === 'X' ? 'opacity-60' : ''}">
+          <td class="px-3 py-1.5 font-mono">${fmtT(e.t)}</td>
+          <td class="px-3 py-1.5"><span class="px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${TYPE_INFO[e.type].cls}">${TYPE_INFO[e.type].name}</span></td>
+          <td class="px-3 py-1.5 text-slate-600 dark:text-slate-300">${e.msg}</td>
+          <td class="px-3 py-1.5 whitespace-nowrap">${e.sound === null ? '—' : e.sound ? '🔔 울림' : '<span class="text-slate-400">대기 중 생략</span>'}</td>
+        </tr>`).join('');
+      document.getElementById('eventRows').innerHTML = rows ||
+        '<tr><td colspan="4" class="px-3 py-6 text-center text-emerald-600 dark:text-emerald-400">✅ 설정 기준을 넘는 구간이 없습니다.</td></tr>';
+    }
+
+    // ---------- 현재 상태 표시 ----------
+    function updateLive(t, active) {
+      if (!result) return;
+      const i = Math.min(result.levels.length - 1, Math.max(0, Math.floor(t / FRAME)));
+      document.getElementById('liveTime').innerText = active ? fmtT(t) : '-';
+      document.getElementById('liveLevel').innerText = active ? result.Ls[i].toFixed(1) + ' dB' : '-';
+      document.getElementById('liveBg').innerText = active ? result.bg[i].toFixed(1) + ' dB' : '-';
+      const recent = (type, sec) => active && result.events.some(e => e.type === type && t >= e.t && t - e.t <= sec);
+      const on = {
+        A: recent('A', 2) || recent('D', 2),
+        B: active && result.bState[i] === 1,
+        C: active && result.cState[i] === 1,
+        D: recent('D', 4),
+      };
+      for (const k of ['A', 'B', 'C', 'D']) {
+        const el = document.getElementById('badge' + k);
+        el.classList.toggle('badge-on', on[k]);
+        el.classList.toggle('badge-off', !on[k]);
+        el.classList.toggle('flash', k === 'D' && on[k]);
+      }
+      const banner = document.getElementById('liveBanner');
+      let cls = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300', msg;
+      if (!active) msg = '▶ 재생 버튼을 누르면 시간 순서대로 경보 상태가 바뀌고 경보음이 울립니다.';
+      else if (on.D) { cls = 'bg-red-600 text-white font-bold flash'; msg = '🚨 복합 위험: 이미 오래 시끄러운 상태에서 소리가 다시 폭발했습니다. 현장 확인이 필요합니다.'; }
+      else if (on.B) { cls = 'bg-orange-500 text-white font-semibold'; msg = '🟠 큰 소리가 계속되고 있습니다.'; }
+      else if (on.A) { cls = 'bg-yellow-400 text-yellow-950 font-semibold'; msg = '🟡 갑자기 소리가 커졌습니다.'; }
+      else if (on.C) { cls = 'bg-sky-500 text-white font-semibold'; msg = '🔵 최근 소음이 많이 쌓였습니다. 이 상태에서 급증하면 복합 위험 경보가 울립니다.'; }
+      else { cls = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'; msg = '✅ 정상 범위입니다.'; }
+      banner.className = 'text-sm rounded-xl px-4 py-3 ' + cls;
+      banner.innerText = msg;
+    }
+
+    // ---------- 재생 ----------
+    let demoPlaying = false, demoBase = 0, demoStart = 0, lastT = 0, lastDraw = 0;
+    const speedSel = document.getElementById('speedSel');
+    const speed = () => parseFloat(speedSel.value);
+    function isPlaying() { return media ? !media.paused && !media.ended : demoPlaying; }
+    function playTime() {
+      if (media) return media.currentTime;
+      if (!demoPlaying) return demoBase;
+      return demoBase + (performance.now() - demoStart) / 1000 * speed();
+    }
+    function setPlayBtn() {
+      const playing = isPlaying();
+      document.getElementById('playBtn').innerHTML = playing
+        ? '<i data-lucide="pause" class="w-4 h-4"></i><span>일시정지</span>'
+        : '<i data-lucide="play" class="w-4 h-4"></i><span>재생하며 경보 듣기</span>';
+      lucide.createIcons();
+    }
+    document.getElementById('playBtn').addEventListener('click', () => {
+      if (!result) return;
+      ensureCtx();
+      if (media) {
+        media.playbackRate = speed();
+        if (media.paused) media.play(); else media.pause();
+      } else if (demoPlaying) {
+        demoBase = playTime(); demoPlaying = false;
+      } else {
+        if (demoBase >= result.duration) demoBase = 0;
+        demoStart = performance.now(); demoPlaying = true;
+      }
+      if (cursorTime === null) { cursorTime = playTime(); lastT = cursorTime; }
+      setPlayBtn();
+    });
+    document.getElementById('rewindBtn').addEventListener('click', () => {
+      if (media) media.currentTime = 0;
+      demoBase = 0; demoStart = performance.now();
+      lastT = 0;
+      cursorTime = isPlaying() ? 0 : null;
+      document.querySelectorAll('.row-hit').forEach(el => el.classList.remove('row-hit'));
+      redrawCharts();
+      updateLive(0, cursorTime !== null);
+    });
+    speedSel.addEventListener('change', () => {
+      if (media) media.playbackRate = speed();
+      else if (demoPlaying) { demoBase = playTime(); demoStart = performance.now(); }
+    });
+    function redrawCharts() { for (const k in charts) charts[k].draw(); }
+
+    function onLiveEvent(e, k) {
+      if (e.sound) playAlert(e.type);
+      const row = document.getElementById('ev_' + k);
+      if (row) { row.classList.add('row-hit'); row.scrollIntoView({ block: 'nearest' }); }
+    }
+
+    function tick() {
+      if (result && isPlaying()) {
+        let t = playTime();
+        if (!media && t >= result.duration) { t = result.duration; demoBase = t; demoPlaying = false; setPlayBtn(); }
+        const jumped = t < lastT || t - lastT > 1 + speed();
+        if (!jumped) result.events.forEach((e, k) => { if (e.t > lastT && e.t <= t) onLiveEvent(e, k); });
+        lastT = t;
+        cursorTime = t;
+        const now = performance.now();
+        if (now - lastDraw > 100) { lastDraw = now; redrawCharts(); updateLive(t, true); }
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // ---------- 불러오기 ----------
+    function resetPlayback() {
+      demoPlaying = false; demoBase = 0; lastT = 0; cursorTime = null;
+      setPlayBtn();
+    }
+    function clearMedia() {
+      if (media) { media.pause(); media = null; }
+      if (mediaUrl) { URL.revokeObjectURL(mediaUrl); mediaUrl = null; }
+      const box = document.getElementById('mediaBox');
+      box.innerHTML = ''; box.classList.add('hidden');
+    }
+
+    function loadDemo() {
+      clearMedia();
+      resetPlayback();
+      source = { levels: makeDemoLevels(), name: '운동회_응원함성_데모샘플', isDemo: true };
+      document.getElementById('fileName').innerText = source.name;
+      document.getElementById('fileDuration').innerText = '3분 0초 (문 쾅 · 환호 · 1분 응원 · 비명 · 책 떨어짐)';
+      speedSel.disabled = false;
+      renderAll();
+    }
+    document.getElementById('demoBtn').addEventListener('click', loadDemo);
+
+    document.getElementById('fileInput').addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const btnText = document.getElementById('uploadBtnText');
+      btnText.innerText = '오디오 분석 중...';
+      try {
+        const ctx = ensureCtx();
+        const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+        clearMedia();
+        resetPlayback();
+        source = { levels: levelsFromBuffer(buffer), name: file.name, isDemo: false };
+
+        mediaUrl = URL.createObjectURL(file);
+        const isVideo = file.type.startsWith('video');
+        media = document.createElement(isVideo ? 'video' : 'audio');
+        media.src = mediaUrl;
+        media.controls = true;
+        media.className = 'w-full rounded-lg' + (isVideo ? ' max-h-56 bg-black' : '');
+        media.addEventListener('play', () => { ensureCtx(); media.playbackRate = speed(); if (cursorTime === null) { cursorTime = media.currentTime; lastT = cursorTime; } setPlayBtn(); });
+        media.addEventListener('pause', setPlayBtn);
+        media.addEventListener('ended', setPlayBtn);
+        media.addEventListener('seeked', () => { lastT = media.currentTime; if (cursorTime !== null) { cursorTime = lastT; redrawCharts(); updateLive(lastT, true); } });
+        const box = document.getElementById('mediaBox');
+        box.appendChild(media); box.classList.remove('hidden');
+
+        document.getElementById('fileName').innerText = file.name;
+        const d = buffer.duration;
+        document.getElementById('fileDuration').innerText = `${Math.floor(d / 60)}분 ${(d % 60).toFixed(1)}초`;
+        btnText.innerText = '다른 파일 선택하기';
+        renderAll();
+      } catch (err) {
+        console.error(err);
+        alert('선택한 파일에서 오디오를 추출할 수 없습니다.');
+        btnText.innerText = '동영상 / 음성 파일 선택';
+      }
+      e.target.value = '';
+    });
+
+    loadDemo();
+  </script>
+</body>
+</html>
