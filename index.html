@@ -7,6 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
@@ -18,23 +20,52 @@
     .flash { animation: flash .6s ease-in-out infinite; }
     .row-hit { background: rgba(168,85,247,.18) !important; transition: background .3s; }
     input[type=range] { width: 100%; cursor: pointer; }
+    /* 탭: 선택된 패널만 보임 */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: flex; }
+    .tab-btn { white-space: nowrap; padding: .4rem .85rem; border-radius: .6rem; font-size: .875rem; font-weight: 700; color: #475569; background: #f1f5f9; }
+    .tab-btn:hover { background: #e2e8f0; }
+    .dark .tab-btn { color: #cbd5e1; background: #1e293b; }
+    .dark .tab-btn:hover { background: #334155; }
+    .tab-btn.active, .dark .tab-btn.active { background: #2563eb; color: #fff; }
+
+    /* ②미분·③적분 탭 자동 크기: --k(배율)만 바꾸면 글자·여백·수식이 함께 커지고 작아짐 (fitPanel이 계산) */
+    .fit-panel { --k: 1; gap: calc(.9rem * var(--k)); }
+    .fit-pad  { padding: calc(.7rem * var(--k)) calc(1.2rem * var(--k)); }
+    .fit-card { padding: calc(.9rem * var(--k)); }
+    /* 기본 크기(k=1)는 그래프 글자(눈금 13px·범례 14px)와 비슷한 수준에 맞춤 */
+    .fit-h2   { font-size: calc(1.2rem * var(--k)); line-height: 1.25; }
+    .fit-h2s  { font-size: calc(.9rem * var(--k)); }
+    .fit-h3   { font-size: calc(1rem * var(--k)); line-height: 1.3; }
+    .fit-sub  { font-size: calc(.8rem * var(--k)); line-height: 1.35; }
+    .fit-note { font-size: calc(.72rem * var(--k)); line-height: 1.35; }
+    .fit-fbox { margin-top: calc(.4rem * var(--k)); padding: calc(.2rem * var(--k)) calc(.8rem * var(--k)); }
+    .fit-formula { font-size: calc(.9rem * var(--k)); }
+    .fit-formula .katex-display { margin: .2em 0; }
+    .fit-panel[data-fmode="wide"] .f-narrow, .fit-panel[data-fmode="narrow"] .f-wide { display: none; }
+    /* 그래프는 항상 위아래로 쌓음: 같은 시각을 세로로 맞춰 비교 */
+    .fit-grid { display: grid; gap: calc(.7rem * var(--k)); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+    /* 그래프 칸: 크기 조절 직후 Chart.js가 캔버스를 다시 맞추기 전, 이전 크기의 캔버스가 넘침 측정에 끼어들지 않게 잘라냄 */
+    .chart-box { margin-top: calc(.4rem * var(--k)); overflow: hidden; }
+    .chart-box > canvas { position: absolute; left: 0; top: 0; }  /* 캔버스가 칸 크기를 밀어내지 않게 */
   </style>
   <script>
     tailwind.config = { darkMode: 'class' }
   </script>
 </head>
-<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 h-[100dvh] flex flex-col">
 
-  <nav class="sticky top-0 z-50 bg-white/85 dark:bg-slate-900/85 backdrop-blur border-b border-slate-200 dark:border-slate-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-      <div class="flex items-center gap-3">
-        <div class="p-2.5 bg-blue-600 text-white rounded-xl"><i data-lucide="activity" class="w-6 h-6"></i></div>
-        <div>
+  <header class="shrink-0 sticky top-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+    <!-- 1줄: 로고 · 경보음 · 테마 -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="p-2 bg-blue-600 text-white rounded-xl shrink-0"><i data-lucide="activity" class="w-5 h-5"></i></div>
+        <div class="min-w-0">
           <span class="font-extrabold text-lg block leading-none text-slate-900 dark:text-white">다같이 온(ON) 마당</span>
           <span class="text-xs text-slate-500 dark:text-slate-400">운동회 소음 경보 시스템</span>
         </div>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 shrink-0">
         <button id="soundToggleBtn" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold">
           <i data-lucide="volume-2" id="soundIcon" class="w-4 h-4 text-emerald-500"></i>
           <span id="soundText">경보음 ON</span>
@@ -44,199 +75,292 @@
         </button>
       </div>
     </div>
-  </nav>
-
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-
-    <header class="text-center max-w-3xl mx-auto space-y-2">
-      <h1 class="font-black text-slate-900 dark:text-white leading-tight">
-        <span class="block text-4xl sm:text-5xl text-blue-600 dark:text-blue-400">다같이 온(ON) 마당</span>
-        <span class="block text-2xl sm:text-3xl mt-2">운동회 소음 경보 시스템</span>
-      </h1>
-      <p class="text-slate-600 dark:text-slate-400 text-sm sm:text-base">
-        <strong>갑자기 커지는 소리(미분)</strong>와 <strong>오래 이어지는 큰 소리(적분)</strong>를 따로 감지하고,
-        이미 시끄러운 상태에서 다시 소리가 폭발하면 <strong>🔴 복합 위험 사이렌</strong>을 울립니다.
-      </p>
-    </header>
-
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-      <!-- 파일 & 재생 -->
-      <section class="lg:col-span-5 glass-card rounded-2xl p-6 shadow-sm space-y-4">
-        <div>
-          <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-600"></i> 미디어 파일 선택
-          </h2>
-          <p class="text-xs text-slate-500 dark:text-slate-400">동영상(MP4 등) 또는 음성(MP3 등) 파일의 소리를 분석합니다</p>
-        </div>
-
-        <label class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-5 cursor-pointer hover:border-blue-500 bg-slate-50/50 dark:bg-slate-800/40 transition text-center">
-          <i data-lucide="file-audio" class="w-9 h-9 text-slate-400 mb-2"></i>
-          <span id="uploadBtnText" class="text-sm font-semibold text-slate-700 dark:text-slate-200">동영상 / 음성 파일 선택</span>
-          <span class="text-xs text-slate-400 mt-1">video/*, audio/*</span>
-          <input type="file" id="fileInput" accept="video/*,audio/*" class="hidden">
-        </label>
-
-        <button id="demoBtn" class="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center gap-1.5">
-          <i data-lucide="play-circle" class="w-4 h-4"></i> 운동회 샘플 데이터(3분)로 테스트하기
+    <!-- 2줄: 탭 · 공용 재생 바 (어느 탭에서든 재생 가능) -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-2 py-2">
+      <nav class="flex gap-1.5 overflow-x-auto min-w-0" id="tabBar">
+        <button data-tab="intro" class="tab-btn">① 소개·설정</button>
+        <button data-tab="deriv" class="tab-btn">② 미분 🟡A</button>
+        <button data-tab="integ" class="tab-btn">③ 적분 🔵C</button>
+        <button data-tab="alarm" class="tab-btn">④ 복합 경보 🔴D</button>
+      </nav>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="text-xs font-mono text-slate-500 dark:text-slate-400 hidden sm:inline">재생 위치 <b id="barTime" class="text-slate-800 dark:text-slate-100">0:00.0</b></span>
+        <button id="playBtn" class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold flex items-center gap-1.5">
+          <i data-lucide="play" class="w-4 h-4"></i><span>재생</span>
         </button>
-
-        <div class="pt-3 border-t border-slate-200 dark:border-slate-800 text-xs space-y-1">
-          <div class="flex justify-between gap-2"><span class="text-slate-500">파일명</span><span id="fileName" class="font-medium truncate max-w-[220px]">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-500">길이</span><span id="fileDuration" class="font-medium">-</span></div>
-        </div>
-
-        <div id="mediaBox" class="hidden"></div>
-
-        <div class="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 space-y-2">
-          <div class="flex items-center gap-2">
-            <button id="playBtn" class="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold flex items-center justify-center gap-1.5">
-              <i data-lucide="play" class="w-4 h-4"></i><span>재생하며 경보 듣기</span>
-            </button>
-            <button id="rewindBtn" title="처음으로" class="p-2 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600">
-              <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-            </button>
-            <select id="speedSel" class="text-xs rounded-lg bg-white dark:bg-slate-700 border-0 py-2 px-2">
-              <option value="1">1배속</option>
-              <option value="2">2배속</option>
-              <option value="5" selected>5배속</option>
-              <option value="10">10배속</option>
-            </select>
-          </div>
-          <p class="text-[11px] text-slate-500 dark:text-slate-400">재생하면 시간 순서대로 경보가 실제로 울립니다. 그래프의 세로선이 현재 위치입니다.</p>
-        </div>
-      </section>
-
-      <!-- 기준치 설정 -->
-      <section class="lg:col-span-7 glass-card rounded-2xl p-6 shadow-sm space-y-4">
-        <div class="border-b border-slate-200 dark:border-slate-800 pb-3 flex items-center justify-between gap-2">
-          <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <i data-lucide="sliders-horizontal" class="w-5 h-5 text-blue-600"></i> 학교별 경보 기준 설정
-          </h2>
-          <span class="text-xs text-slate-400 text-right">바꾸면 바로 다시 분석</span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="bg-yellow-50/80 dark:bg-yellow-950/30 p-4 rounded-xl border border-yellow-200 dark:border-yellow-900/50 space-y-2">
-            <div class="font-bold text-yellow-900 dark:text-yellow-200 text-sm">🟡 A. 돌발 급증 (미분)</div>
-            <p class="text-[11px] text-yellow-800/80 dark:text-yellow-300/80">0.5초 사이 소리가 빠르게 커지고, 그 상태가 잠깐 유지될 때. 문 쾅 같은 순간 충격음은 무시합니다.</p>
-            <div class="flex justify-between text-xs"><span>변화율 기준</span><b id="val_aRate" class="font-mono"></b></div>
-            <input type="range" id="in_aRate" min="10" max="80" step="2" value="30" class="accent-yellow-500">
-            <div class="flex justify-between text-xs"><span>유지 시간</span><b id="val_aHold" class="font-mono"></b></div>
-            <input type="range" id="in_aHold" min="0.3" max="3" step="0.1" value="1" class="accent-yellow-500">
-          </div>
-
-          <div class="bg-orange-50/80 dark:bg-orange-950/30 p-4 rounded-xl border border-orange-200 dark:border-orange-900/50 space-y-2">
-            <div class="font-bold text-orange-900 dark:text-orange-200 text-sm">🟠 B. 지속 고소음</div>
-            <p class="text-[11px] text-orange-800/80 dark:text-orange-300/80">평소보다 큰 소리가 정해진 시간 넘게 이어질 때.</p>
-            <div class="flex justify-between text-xs"><span>배경 대비</span><b id="val_bDb" class="font-mono"></b></div>
-            <input type="range" id="in_bDb" min="5" max="40" step="1" value="20" class="accent-orange-500">
-            <div class="flex justify-between text-xs"><span>지속 시간</span><b id="val_bDur" class="font-mono"></b></div>
-            <input type="range" id="in_bDur" min="5" max="120" step="5" value="30" class="accent-orange-500">
-          </div>
-
-          <div class="bg-sky-50/80 dark:bg-sky-950/30 p-4 rounded-xl border border-sky-200 dark:border-sky-900/50 space-y-2">
-            <div class="font-bold text-sky-900 dark:text-sky-200 text-sm">🔵 C. 누적 피로 (적분)</div>
-            <p class="text-[11px] text-sky-800/80 dark:text-sky-300/80">최근 구간의 평균 소리 크기(넓이 ÷ 구간 길이)가 기준치를 넘는 순간 한 번 알림. 분석 길이보다 구간이 길면 판정하지 않습니다.</p>
-            <div class="flex justify-between text-xs"><span>누적 구간</span><b id="val_cWin" class="font-mono"></b></div>
-            <input type="range" id="in_cWin" min="0.5" max="10" step="0.5" value="2" class="accent-sky-500">
-            <div class="flex justify-between items-center text-xs gap-2">
-              <span>기준치 (구간 평균)</span>
-              <span class="flex items-center gap-1">
-                <input type="number" id="num_cAvg" min="20" max="100" step="0.5" value="58"
-                       class="w-20 text-right font-mono font-bold rounded-md px-1.5 py-0.5 bg-white dark:bg-slate-800 border border-sky-300 dark:border-sky-700">
-                <span class="font-mono">dB</span>
-              </span>
-            </div>
-            <input type="range" id="in_cAvg" min="20" max="100" step="0.5" value="58" class="accent-sky-500">
-            <div class="text-[11px] text-sky-800 dark:text-sky-300 text-right">누적량(넓이)으로 환산하면 약 <b id="cIntEq" class="font-mono">-</b> dB·초</div>
-            <span id="val_cAvg" class="hidden"></span>
-          </div>
-
-          <div class="bg-slate-100/80 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-            <div class="font-bold text-slate-800 dark:text-slate-200 text-sm">🔁 재경보 대기 시간</div>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400">같은 종류의 경보음이 연달아 울리지 않도록 기다리는 시간. 기록은 계속 남습니다.</p>
-            <div class="flex justify-between text-xs"><span>대기 시간</span><b id="val_cool" class="font-mono"></b></div>
-            <input type="range" id="in_cool" min="0" max="120" step="5" value="30" class="accent-slate-500">
-          </div>
-        </div>
-      </section>
+        <button id="rewindBtn" title="처음으로" class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        </button>
+        <select id="speedSel" class="text-xs rounded-lg bg-slate-100 dark:bg-slate-800 border-0 py-2 px-2">
+          <option value="1">1배속</option>
+          <option value="2">2배속</option>
+          <option value="5" selected>5배속</option>
+          <option value="10">10배속</option>
+        </select>
+      </div>
     </div>
+  </header>
 
-    <!-- 현재 상태 -->
-    <section class="glass-card rounded-2xl p-5 shadow-sm space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <i data-lucide="radar" class="w-5 h-5 text-blue-600"></i> 현재 경보 상태
-        </h2>
-        <div class="text-xs font-mono text-slate-500 dark:text-slate-400 flex gap-4">
-          <span>시각 <b id="liveTime" class="text-slate-800 dark:text-slate-100">-</b></span>
-          <span>소음 <b id="liveLevel" class="text-slate-800 dark:text-slate-100">-</b></span>
-          <span>배경 <b id="liveBg" class="text-slate-800 dark:text-slate-100">-</b></span>
+  <main id="mainArea" class="flex-1 min-h-0 overflow-y-auto w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+
+    <!-- ① 소개·설정 -->
+    <section data-panel="intro" class="tab-panel flex-col">
+      <!-- introZoom: 넓은 화면에서 빈 공간이 남지 않도록 내용 전체를 화면 높이에 맞춰 확대(fitIntro) -->
+      <div id="introZoom" class="flex flex-col gap-4">
+      <!-- 시스템 개요 (발표 슬라이드 형식): 제목 → 처리 흐름 → 카드 4장. 기준값은 설정과 연동(renderIntroSummary) -->
+      <div class="text-center space-y-1">
+        <h1 class="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">운동회 소음, <span class="text-amber-500">미분</span>과 <span class="text-sky-500">적분</span>으로 잡아내기</h1>
+        <p class="text-sm text-slate-600 dark:text-slate-300">
+          <strong>갑자기 커지는 소리(미분)</strong>와 <strong>오래 이어지는 큰 소리(적분)</strong>를 따로 감지하고,
+          이미 시끄러운 상태에서 다시 소리가 폭발하면 <strong>🔴 복합 위험 사이렌</strong>을 울립니다.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs sm:text-sm font-semibold">
+        <span class="px-3 py-1.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200">🎙 소리 파일</span>
+        <span class="text-slate-400">➜</span>
+        <span class="px-3 py-1.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200">📏 0.1초마다 소리 크기 L(t)</span>
+        <span class="text-slate-400">➜</span>
+        <span class="inline-flex flex-wrap gap-1">
+          <span class="px-3 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">🟡 미분: 얼마나 빨리 커지나</span>
+          <span class="px-3 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200">🔵 적분: 얼마나 쌓였나</span>
+        </span>
+        <span class="text-slate-400">➜</span>
+        <span class="px-3 py-1.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200">🚦 경보 판단 A·B·C·D</span>
+        <span class="text-slate-400">➜</span>
+        <span class="px-3 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200">🔔 단계별 경보음</span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2 min-w-0">
+          <div class="text-base font-black text-slate-900 dark:text-white">① 왜 필요할까?</div>
+          <ul class="text-xs sm:text-[13px] leading-relaxed text-slate-600 dark:text-slate-300 list-disc pl-4 space-y-1">
+            <li>운동회 소음은 두 종류: <b>갑자기 "와!"</b> 하고 커지는 소리와 <b>오래 이어지는</b> 함성</li>
+            <li>귀로만 판단하면 사람마다 기준이 다름</li>
+            <li>➜ <b>숫자 기준</b>으로 자동 경보</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl p-4 shadow-sm space-y-2 min-w-0 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900/50">
+          <div class="text-base font-black text-yellow-900 dark:text-yellow-200">② 미분 ➜ 🟡 A 돌발 급증</div>
+          <ul class="text-xs sm:text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-1">
+            <li>0.5초 동안 소리가 <b>얼마나 빨리</b> 커지나 (평균변화율 ≈ 미분계수)</li>
+            <li>기준: 초당 <b id="ov_aRate">30</b> dB 이상, <b id="ov_aHold">1.0</b>초 유지</li>
+            <li>문 쾅 같은 <b>순간 소리는 무시</b></li>
+          </ul>
+        </div>
+        <div class="rounded-2xl p-4 shadow-sm space-y-2 min-w-0 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50">
+          <div class="text-base font-black text-sky-900 dark:text-sky-200">③ 적분 ➜ 🔵 C 누적 피로</div>
+          <ul class="text-xs sm:text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-1">
+            <li>최근 <b class="ov_win">30</b>초 그래프 아래 <b>넓이 ÷ <span class="ov_win">30</span>초</b> = 평균 소리 크기</li>
+            <li>기준: 평균 <b id="ov_cAvg">58</b> dB 이상</li>
+            <li>🟠 B 지속 고소음: 배경보다 +<b id="ov_bDb">20</b> dB가 <b class="ov_win">30</b>초 넘게 지속</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl p-4 shadow-sm space-y-2 min-w-0 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50">
+          <div class="text-base font-black text-red-900 dark:text-red-200">④ 둘이 만나면 ➜ 🔴 D 복합 위험</div>
+          <ul class="text-xs sm:text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-1">
+            <li>이미 소리가 <b>쌓인 상태(C)</b>에서 다시 <b>급증(A)</b></li>
+            <li>가장 위험한 순간 ➜ <b>사이렌</b></li>
+            <li>지금 분석: <b id="ov_dExample">-</b></li>
+          </ul>
         </div>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div id="badgeA" class="badge-off transition rounded-xl p-3 bg-yellow-100 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-800">
-          <div class="text-xs font-bold text-yellow-900 dark:text-yellow-200">🟡 A 돌발 급증</div><div class="text-[11px] text-yellow-800/80 dark:text-yellow-300/80">주의 · 짧은 알림음</div>
-        </div>
-        <div id="badgeB" class="badge-off transition rounded-xl p-3 bg-orange-100 dark:bg-orange-900/40 border border-orange-300 dark:border-orange-800">
-          <div class="text-xs font-bold text-orange-900 dark:text-orange-200">🟠 B 지속 고소음</div><div class="text-[11px] text-orange-800/80 dark:text-orange-300/80">경고 · 두 번 알림음</div>
-        </div>
-        <div id="badgeC" class="badge-off transition rounded-xl p-3 bg-sky-100 dark:bg-sky-900/40 border border-sky-300 dark:border-sky-800">
-          <div class="text-xs font-bold text-sky-900 dark:text-sky-200">🔵 C 누적 피로</div><div class="text-[11px] text-sky-800/80 dark:text-sky-300/80">경고 · 낮은 알림음</div>
-        </div>
-        <div id="badgeD" class="badge-off transition rounded-xl p-3 bg-red-100 dark:bg-red-900/40 border border-red-400 dark:border-red-800">
-          <div class="text-xs font-bold text-red-900 dark:text-red-200">🔴 D 복합 위험</div><div class="text-[11px] text-red-800/80 dark:text-red-300/80">C 상태에서 A 발생 · 사이렌</div>
-        </div>
+
+      <div class="text-sm font-bold text-slate-500 dark:text-slate-400 flex items-center gap-2 pt-1">
+        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-700"></span> 직접 해보기 <span class="h-px flex-1 bg-slate-200 dark:bg-slate-700"></span>
       </div>
-      <div id="liveBanner" class="text-sm rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-        ▶ 재생 버튼을 누르면 시간 순서대로 경보 상태가 바뀌고 경보음이 울립니다.
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        <!-- 파일 (간결형: 개요 카드가 설명을 맡으므로 조작에 필요한 것만) -->
+        <section class="lg:col-span-3 glass-card rounded-2xl p-4 shadow-sm space-y-2.5 min-w-0">
+          <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-600"></i> 소리 불러오기
+          </h2>
+
+          <label class="flex items-center gap-3 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 cursor-pointer hover:border-blue-500 bg-slate-50/50 dark:bg-slate-800/40 transition">
+            <i data-lucide="file-audio" class="w-7 h-7 text-slate-400 shrink-0"></i>
+            <span class="min-w-0">
+              <span id="uploadBtnText" class="block text-sm font-semibold text-slate-700 dark:text-slate-200">동영상 / 음성 파일 선택</span>
+              <span class="block text-[11px] text-slate-400">MP4·MP3 등의 소리를 분석</span>
+            </span>
+            <input type="file" id="fileInput" accept="video/*,audio/*" class="hidden">
+          </label>
+
+          <button id="demoBtn" class="w-full py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center gap-1.5">
+            <i data-lucide="play-circle" class="w-4 h-4"></i> 운동회 샘플(3분)로 테스트
+          </button>
+
+          <div class="pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-1">
+            <div class="flex justify-between gap-2"><span class="text-slate-500 shrink-0">파일명</span><span id="fileName" class="font-medium truncate">-</span></div>
+            <div class="flex justify-between gap-2"><span class="text-slate-500 shrink-0">길이</span><span id="fileDuration" class="font-medium text-right">-</span></div>
+          </div>
+
+          <div id="mediaBox" class="hidden"></div>
+
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">
+            ▶ 재생은 화면 위쪽 버튼으로 어느 탭에서든 · 키보드 <b>1~4</b>로 탭 이동
+          </p>
+        </section>
+
+        <!-- 기준치 설정 (4칸 한 줄) -->
+        <section class="lg:col-span-9 glass-card rounded-2xl p-4 shadow-sm space-y-2.5 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <i data-lucide="sliders-horizontal" class="w-5 h-5 text-blue-600"></i> 학교별 경보 기준 설정
+            </h2>
+            <span class="text-xs text-slate-400 text-right">바꾸면 바로 다시 분석</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div class="bg-yellow-50/80 dark:bg-yellow-950/30 p-3 rounded-xl border border-yellow-200 dark:border-yellow-900/50 space-y-1.5 min-w-0">
+              <div class="font-bold text-yellow-900 dark:text-yellow-200 text-sm">🟡 A 돌발 급증 (미분)</div>
+              <div class="flex justify-between text-xs"><span>변화율 기준</span><b id="val_aRate" class="font-mono"></b></div>
+              <input type="range" id="in_aRate" min="10" max="80" step="2" value="30" class="accent-yellow-500">
+              <div class="flex justify-between text-xs"><span>유지 시간</span><b id="val_aHold" class="font-mono"></b></div>
+              <input type="range" id="in_aHold" min="0.3" max="3" step="0.1" value="1" class="accent-yellow-500">
+            </div>
+
+            <div class="bg-orange-50/80 dark:bg-orange-950/30 p-3 rounded-xl border border-orange-200 dark:border-orange-900/50 space-y-1.5 min-w-0">
+              <div class="font-bold text-orange-900 dark:text-orange-200 text-sm">🟠 B 지속 고소음</div>
+              <div class="flex justify-between text-xs"><span>배경 대비</span><b id="val_bDb" class="font-mono"></b></div>
+              <input type="range" id="in_bDb" min="5" max="40" step="1" value="20" class="accent-orange-500">
+              <div class="flex justify-between text-xs gap-1"><span>지속 시간 <span class="text-orange-700/70 dark:text-orange-300/70">(= C 구간)</span></span><b id="val_bDur" class="font-mono"></b></div>
+              <input type="range" id="in_bDur" min="5" max="120" step="5" value="30" class="accent-orange-500">
+            </div>
+
+            <div class="bg-sky-50/80 dark:bg-sky-950/30 p-3 rounded-xl border border-sky-200 dark:border-sky-900/50 space-y-1.5 min-w-0">
+              <div class="font-bold text-sky-900 dark:text-sky-200 text-sm">🔵 C 누적 피로 (적분)</div>
+              <div class="flex justify-between text-xs gap-1"><span>누적 구간 <span class="text-sky-700/70 dark:text-sky-300/70">(= B 지속)</span></span><b id="val_cWin" class="font-mono"></b></div>
+              <div class="flex justify-between items-center text-xs gap-1">
+                <span>기준치(평균)</span>
+                <span class="flex items-center gap-1">
+                  <input type="number" id="num_cAvg" min="20" max="100" step="0.5" value="58"
+                         class="w-16 text-right font-mono font-bold rounded-md px-1 py-0.5 bg-white dark:bg-slate-800 border border-sky-300 dark:border-sky-700">
+                  <span class="font-mono">dB</span>
+                </span>
+              </div>
+              <input type="range" id="in_cAvg" min="20" max="100" step="0.5" value="58" class="accent-sky-500">
+              <div class="text-[11px] text-sky-800 dark:text-sky-300 text-right">넓이로 약 <b id="cIntEq" class="font-mono">-</b> dB·초</div>
+              <span id="val_cAvg" class="hidden"></span>
+            </div>
+
+            <div class="bg-slate-100/80 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5 min-w-0">
+              <div class="font-bold text-slate-800 dark:text-slate-200 text-sm">🔁 재경보 대기</div>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400">같은 경보음이 연달아 울리지 않게 (기록은 남음)</p>
+              <div class="flex justify-between text-xs"><span>대기 시간</span><b id="val_cool" class="font-mono"></b></div>
+              <input type="range" id="in_cool" min="0" max="120" step="5" value="30" class="accent-slate-500">
+            </div>
+          </div>
+        </section>
+      </div>
       </div>
     </section>
 
-    <!-- 요약 + 경보 기록 -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <div class="lg:col-span-4 glass-card rounded-2xl p-5 shadow-sm space-y-3">
-        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="clipboard-list" class="w-5 h-5 text-blue-600"></i> 분석 요약</h2>
-        <div id="summary" class="grid grid-cols-2 gap-2 text-center text-xs"></div>
-        <div id="summaryStats" class="text-xs text-slate-500 dark:text-slate-400 space-y-1"></div>
+    <!-- ② 미분 (fit-panel: 화면 높이·폭에 맞춰 글자·여백 크기를 자동 조절) -->
+    <section data-panel="deriv" data-fmode="wide" class="tab-panel fit-panel flex-col h-full min-h-0">
+      <div class="shrink-0 glass-card rounded-2xl shadow-sm fit-pad min-w-0">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 class="fit-h2 font-black text-slate-900 dark:text-white">미분 — 갑자기 커지는 소리 <span class="fit-h2s">(🟡 A 경보)</span></h2>
+          <span class="fit-sub text-slate-600 dark:text-slate-300">빨간 점선을 넘고, 커진 상태가 유지되면 경보</span>
+        </div>
+        <div class="fit-fbox rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/30 overflow-x-auto">
+          <div id="derivFormula" class="f-wide fit-formula text-slate-900 dark:text-white">L′(t) = dL(t)/dt = lim<sub>Δt→0</sub> {L(t) − L(t−Δt)} / Δt ≒ {L(t) − L(t−0.5)} / 0.5</div>
+          <div id="derivFormulaNarrow" class="f-narrow fit-formula text-slate-900 dark:text-white">L′(t) = dL(t)/dt = lim<sub>Δt→0</sub> {L(t) − L(t−Δt)} / Δt ≒ {L(t) − L(t−0.5)} / 0.5</div>
+          <p class="fit-note text-slate-500 dark:text-slate-400">소리 데이터는 0.1초 간격으로만 있어서 Δt를 0까지 줄일 수 없으므로, Δt = 0.5초의 평균변화율로 순간변화율(미분계수)을 근사합니다.</p>
+        </div>
       </div>
-      <div class="lg:col-span-8 glass-card rounded-2xl p-5 shadow-sm space-y-3">
-        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="list" class="w-5 h-5 text-blue-600"></i> 경보 기록</h2>
-        <div class="max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800">
-          <table class="w-full text-xs">
-            <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-              <tr><th class="text-left px-3 py-2 w-20">시각</th><th class="text-left px-3 py-2 w-28">단계</th><th class="text-left px-3 py-2">내용</th><th class="text-left px-3 py-2 w-24">경보음</th></tr>
-            </thead>
-            <tbody id="eventRows"></tbody>
-          </table>
+      <div class="fit-grid flex-1 min-h-0">
+        <div class="glass-card rounded-2xl shadow-sm flex flex-col min-h-0 min-w-0 fit-card">
+          <div class="flex flex-wrap items-baseline gap-x-3"><h3 class="fit-h3 font-black text-slate-900 dark:text-white">그래프 1. 소리 크기 L(t)</h3>
+            <p class="levelSub fit-sub text-slate-600 dark:text-slate-300">주황 배경 = 큰 소리가 30초 넘게 이어진 구간</p></div>
+          <div class="chart-box relative flex-1 min-h-0"><canvas id="levelChart"></canvas></div>
+        </div>
+        <div class="glass-card rounded-2xl shadow-sm flex flex-col min-h-0 min-w-0 fit-card">
+          <div class="flex flex-wrap items-baseline gap-x-3"><h3 class="fit-h3 font-black text-slate-900 dark:text-white">그래프 2. 소리가 커지는 속도 L′(t)</h3>
+            <p class="fit-sub text-slate-600 dark:text-slate-300">0.5초 평균변화율 · 빨간 점선을 넘으면 급증 후보</p></div>
+          <div class="chart-box relative flex-1 min-h-0"><canvas id="slopeChart"></canvas></div>
         </div>
       </div>
     </section>
 
-    <!-- 그래프 -->
-    <section class="glass-card rounded-2xl p-6 shadow-sm">
-      <div class="mb-3">
-        <h3 class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">1. 소리 크기 L(t)</h3>
-        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">주황 배경 = 큰 소리가 30초 넘게 이어진 구간</p>
+    <!-- ③ 적분 (fit-panel) -->
+    <section data-panel="integ" data-fmode="wide" class="tab-panel fit-panel flex-col h-full min-h-0">
+      <div class="shrink-0 glass-card rounded-2xl shadow-sm fit-pad min-w-0">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 class="fit-h2 font-black text-slate-900 dark:text-white">적분 — 오래 쌓인 소리 <span class="fit-h2s">(🔵 C 경보)</span></h2>
+          <span class="fit-sub text-slate-600 dark:text-slate-300">기준: 평균 ≥ <b id="integAvg" class="font-mono">58</b> dB ⇔ 넓이 ≥ <b id="integArea" class="font-mono">1,740</b> dB·초</span>
+        </div>
+        <div class="fit-fbox rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/70 dark:bg-sky-950/30 overflow-x-auto">
+          <div id="integFormula" class="f-wide fit-formula text-slate-900 dark:text-white">L̄(t) = (1/30) ∫<sub>t−30</sub><sup>t</sup> L(s) ds</div>
+          <p id="integNote" class="fit-note text-slate-500 dark:text-slate-400">그래프 1 아래에서 최근 30초 동안의 넓이를 구하고, 구간 길이 30초로 나눈 값(구간 평균)입니다.</p>
+        </div>
       </div>
-      <div class="relative h-80 w-full"><canvas id="levelChart"></canvas></div>
+      <div class="fit-grid flex-1 min-h-0">
+        <div class="glass-card rounded-2xl shadow-sm flex flex-col min-h-0 min-w-0 fit-card">
+          <div class="flex flex-wrap items-baseline gap-x-3"><h3 class="fit-h3 font-black text-slate-900 dark:text-white">그래프 1. 소리 크기 L(t)</h3>
+            <p class="fit-sub text-slate-600 dark:text-slate-300">이 곡선 아래 넓이를 최근 구간만큼 쌓아서 구간 길이로 나눕니다</p></div>
+          <div class="chart-box relative flex-1 min-h-0"><canvas id="levelChart2"></canvas></div>
+        </div>
+        <div class="glass-card rounded-2xl shadow-sm flex flex-col min-h-0 min-w-0 fit-card">
+          <div class="flex flex-wrap items-baseline gap-x-3"><h3 id="leqTitle" class="fit-h3 font-black text-slate-900 dark:text-white">그래프 3. 최근 30초 동안 쌓인 소리</h3>
+            <p class="fit-sub text-slate-600 dark:text-slate-300">파란 선 = 최근 구간 평균 · 빨간 점선(기준치)을 넘는 순간 C 경보 · 파란 배경 = 기준치를 넘은 구간</p></div>
+          <div class="chart-box relative flex-1 min-h-0"><canvas id="leqChart"></canvas></div>
+        </div>
+      </div>
     </section>
 
-    <section class="glass-card rounded-2xl p-6 shadow-sm">
-      <div class="mb-3">
-        <h3 class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">2. 소리가 커지는 속도 (미분)</h3>
-        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">0.5초 평균변화율 · 빨간 점선을 넘으면 급증 후보</p>
+<!-- ④ 복합 경보 시연 -->
+    <section data-panel="alarm" class="tab-panel flex-col gap-4 lg:h-full lg:min-h-0">
+      <div class="shrink-0 glass-card rounded-2xl p-4 shadow-sm space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-xl lg:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <i data-lucide="radar" class="w-6 h-6 text-blue-600"></i> 현재 경보 상태
+          </h2>
+          <div class="text-sm font-mono text-slate-500 dark:text-slate-400 flex gap-4">
+            <span>시각 <b id="liveTime" class="text-slate-800 dark:text-slate-100">-</b></span>
+            <span>소음 <b id="liveLevel" class="text-slate-800 dark:text-slate-100">-</b></span>
+            <span>배경 <b id="liveBg" class="text-slate-800 dark:text-slate-100">-</b></span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div id="badgeA" class="badge-off transition rounded-xl p-3 bg-yellow-100 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-800">
+            <div class="text-sm font-bold text-yellow-900 dark:text-yellow-200">🟡 A 돌발 급증 (미분)</div><div class="text-[11px] text-yellow-800/80 dark:text-yellow-300/80">주의 · 짧은 알림음</div>
+          </div>
+          <div id="badgeB" class="badge-off transition rounded-xl p-3 bg-orange-100 dark:bg-orange-900/40 border border-orange-300 dark:border-orange-800">
+            <div class="text-sm font-bold text-orange-900 dark:text-orange-200">🟠 B 지속 고소음</div><div class="text-[11px] text-orange-800/80 dark:text-orange-300/80">경고 · 두 번 알림음</div>
+          </div>
+          <div id="badgeC" class="badge-off transition rounded-xl p-3 bg-sky-100 dark:bg-sky-900/40 border border-sky-300 dark:border-sky-800">
+            <div class="text-sm font-bold text-sky-900 dark:text-sky-200">🔵 C 누적 피로 (적분)</div><div class="text-[11px] text-sky-800/80 dark:text-sky-300/80">경고 · 낮은 알림음</div>
+          </div>
+          <div id="badgeD" class="badge-off transition rounded-xl p-3 bg-red-100 dark:bg-red-900/40 border border-red-400 dark:border-red-800">
+            <div class="text-sm font-bold text-red-900 dark:text-red-200">🔴 D 복합 위험</div><div class="text-[11px] text-red-800/80 dark:text-red-300/80">C 상태에서 A 발생 · 사이렌</div>
+          </div>
+        </div>
+        <div id="liveBanner" class="text-sm rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+          ▶ 위쪽 재생 버튼을 누르면 시간 순서대로 경보 상태가 바뀌고 경보음이 울립니다.
+        </div>
       </div>
-      <div class="relative h-80 w-full"><canvas id="slopeChart"></canvas></div>
-    </section>
 
-    <section class="glass-card rounded-2xl p-6 shadow-sm">
-      <div class="mb-3">
-        <h3 id="leqTitle" class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">3. 최근 2분 동안 쌓인 소리 (적분)</h3>
-        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">파란 선 = 최근 구간의 평균 (그래프 1 아래 넓이 ÷ 구간 길이) · 빨간 점선(기준치)을 넘는 순간 C 경보 · 파란 배경 = 기준치를 넘은 구간</p>
+      <div class="grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] gap-4 lg:flex-1 lg:min-h-0">
+        <div class="lg:col-span-7 glass-card rounded-2xl p-4 shadow-sm flex flex-col min-h-0 min-w-0">
+          <h3 class="text-lg font-black text-slate-900 dark:text-white">소리 크기 L(t)와 경보 위치</h3>
+          <p class="levelSub text-xs text-slate-600 dark:text-slate-300">주황 배경 = 큰 소리가 30초 넘게 이어진 구간</p>
+          <div class="relative h-72 lg:h-auto lg:flex-1 min-h-0 mt-2"><canvas id="levelChart3"></canvas></div>
+        </div>
+        <div class="lg:col-span-5 glass-card rounded-2xl p-4 shadow-sm flex flex-col gap-2 min-h-0 min-w-0">
+          <h3 class="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="list" class="w-5 h-5 text-blue-600"></i> 경보 기록</h3>
+          <div id="summary" class="shrink-0 grid grid-cols-4 gap-2 text-center text-xs"></div>
+          <div id="summaryStats" class="shrink-0 text-xs text-slate-500 dark:text-slate-400 space-y-0.5"></div>
+          <div class="max-h-72 lg:max-h-none lg:flex-1 min-h-0 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800">
+            <table class="w-full text-xs">
+              <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                <tr><th class="text-left px-2 py-2 w-16">시각</th><th class="text-left px-2 py-2 w-24">단계</th><th class="text-left px-2 py-2">내용</th><th class="text-left px-2 py-2 w-20">경보음</th></tr>
+              </thead>
+              <tbody id="eventRows"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div class="relative h-80 w-full"><canvas id="leqChart"></canvas></div>
     </section>
   </main>
 
@@ -255,6 +379,20 @@
     };
 
     lucide.createIcons();
+
+    // ---------- 미분 판서 수식 (KaTeX 로드 실패 시 위의 텍스트 수식 유지) ----------
+    //   넓은 화면: 한 줄 / 좁은 화면(휴대폰): 등호 기준 세 줄로 나눠 가로 스크롤 방지
+    try {
+      if (window.katex) {
+        const opt = { displayMode: true, throwOnError: false };
+        katex.render(
+          String.raw`L'(t) = \frac{dL(t)}{dt} = \lim_{\Delta t \to 0} \frac{L(t) - L(t-\Delta t)}{\Delta t} \fallingdotseq \frac{L(t) - L(t-0.5)}{0.5}`,
+          document.getElementById('derivFormula'), opt);
+        katex.render(
+          String.raw`\begin{aligned} L'(t) &= \frac{dL(t)}{dt} \\ &= \lim_{\Delta t \to 0} \frac{L(t) - L(t-\Delta t)}{\Delta t} \\ &\fallingdotseq \frac{L(t) - L(t-0.5)}{0.5} \end{aligned}`,
+          document.getElementById('derivFormulaNarrow'), opt);
+      }
+    } catch (e) { console.warn('KaTeX error:', e); }
 
     // ---------- 테마 ----------
     const themeIcon = document.getElementById('themeIcon');
@@ -325,12 +463,12 @@
       bDb: v => `+${v} dB`,
       bDur: v => `${v}초`,
       cAvg: v => `${(+v).toFixed(1)} dB`,
-      cWin: v => `${(+v).toFixed(1)}분`,
       cool: v => `${v}초`,
     };
     function getSettings() {
       const s = {};
       for (const id in SETTINGS) s[id] = parseFloat(document.getElementById('in_' + id).value);
+      s.cWin = s.bDur / 60;   // C 누적 구간(분) = B 지속 시간(초)
       return s;
     }
     let renderQueued = false;
@@ -355,11 +493,87 @@
       cAvgSlider.value = v;
       cAvgSlider.dispatchEvent(new Event('input'));
     });
-    document.getElementById('in_cWin').addEventListener('input', updateCHelper);
+    document.getElementById('in_bDur').addEventListener('input', updateCHelper);
+    // 누적 구간 표시(분 → 초): B 지속 시간과 같은 단위로 보여줌
+    function fmtWin(v) { return `${Math.round(+v * 60)}초`; }
     function updateCHelper() {
       const s = getSettings();
+      document.getElementById('val_cWin').innerText = fmtWin(s.cWin);
       document.getElementById('cIntEq').innerText = Math.round(s.cAvg * s.cWin * 60).toLocaleString();
+      renderIntegFormula(s);
     }
+    // 적분 판서 수식: 누적 구간 T(초)와 기준치를 슬라이더 값에 맞춰 다시 그림
+    function renderIntegFormula(s) {
+      const T = +(s.cWin * 60).toFixed(1);
+      document.getElementById('integAvg').innerText = s.cAvg;
+      document.getElementById('integArea').innerText = Math.round(s.cAvg * T).toLocaleString();
+      document.getElementById('integNote').innerText = `그래프 1 아래에서 최근 ${T}초 동안의 넓이를 구하고, 구간 길이 ${T}초로 나눈 값(구간 평균)입니다.`;
+      if (window.katex) {
+        try {
+          katex.render(String.raw`\overline{L}(t) = \frac{1}{${T}}\int_{t-${T}}^{t} L(s)\,ds`,
+            document.getElementById('integFormula'), { displayMode: true, throwOnError: false });
+        } catch (e) { console.warn('KaTeX error:', e); }
+      }
+      fitActivePanel();
+    }
+
+    // ---------- ②미분·③적분 탭 자동 크기 맞춤 ----------
+    //   배율 k를 1.0부터 0.05씩 줄이며, 아래 3조건을 모두 만족하는 가장 큰 k를 고름
+    //   ① 탭 안 내용이 화면 높이를 넘지 않음(스크롤 없음) ② 수식이 가로로 잘리지 않음 ③ 그래프가 충분한 높이를 가짐
+    //   한 줄 수식으로 안 되면(좁은 화면) 줄 나눔 수식으로 다시 시도
+    function fitPanel(panel) {
+      if (!panel || !panel.classList.contains('fit-panel') || !panel.classList.contains('active')) return;
+      const boxes = [...panel.querySelectorAll('.fit-fbox')];
+      const plots = [...panel.querySelectorAll('.chart-box')];
+      const hasNarrow = !!panel.querySelector('.f-narrow');
+      const H = panel.clientHeight;
+      const minPlot = Math.max(90, H * 0.28);   // 위아래 두 그래프가 각각 탭 높이의 28% 이상 (그래프 우선)
+      const ok = () => panel.scrollHeight <= panel.clientHeight + 1
+        && boxes.every(b => b.scrollWidth <= b.clientWidth + 1)
+        && plots.every(p => p.clientHeight >= minPlot);
+      // 한 줄 수식·줄 나눔 수식 각각에서 맞는 가장 큰 배율을 찾고, 더 크게 보이는 쪽을 고름(같으면 한 줄)
+      const best = mode => {
+        panel.dataset.fmode = mode;
+        for (let k = 1.0; k >= 0.45 - 1e-9; k -= 0.05) {   // 1배보다 키우지 않음(그래프 글자와 크기 맞춤)
+          panel.style.setProperty('--k', k.toFixed(2));
+          if (ok()) return k;
+        }
+        return 0.45;   // 어떤 배율로도 다 못 맞추면 가장 작은 배율
+      };
+      const kWide = best('wide');
+      const kNarrow = hasNarrow ? best('narrow') : -1;
+      const [mode, k] = kNarrow > kWide + 1e-9 ? ['narrow', kNarrow] : ['wide', kWide];
+      panel.dataset.fmode = mode;
+      panel.style.setProperty('--k', k.toFixed(2));
+    }
+    function fitActivePanel() {
+      fitPanel(document.querySelector('.fit-panel.active'));
+      fitIntro();
+    }
+
+    // ---------- ①소개·설정 탭 자동 확대 ----------
+    //   넓은 화면(가로 1024 이상)에서 내용 전체를 확대해 빈 공간을 줄이고, 작은 화면에선 축소해 스크롤을 없앰
+    //   배율 1.6부터 0.05씩 줄이며 탭 영역 높이 안에 들어오는 가장 큰 배율을 고름 (CSS zoom: 글자·여백·카드가 함께 커짐)
+    //   ※ 슬라이더를 끄는 중에 크기가 바뀌지 않도록 탭 전환·창 크기 변경·파일 불러오기 때만 다시 계산
+    function fitIntro() {
+      const sec = document.querySelector('[data-panel="intro"]');
+      const box = document.getElementById('introZoom');
+      if (!sec || !box || !sec.classList.contains('active')) return;
+      const main = document.getElementById('mainArea');
+      box.style.zoom = '1';
+      if (innerWidth < 1024) return;   // 좁은 화면: 원래 크기로 두고 스크롤 허용
+      for (let z = 1.6; z >= 0.7 - 1e-9; z -= 0.05) {
+        box.style.zoom = z.toFixed(2);
+        if (main.scrollHeight <= main.clientHeight + 1) return;
+      }
+    }
+    let fitQueued = false;
+    window.addEventListener('resize', () => {
+      if (fitQueued) return;
+      fitQueued = true;
+      requestAnimationFrame(() => { fitQueued = false; fitActivePanel(); });
+    });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitActivePanel);
     updateCHelper();
 
     // ---------- 데이터 ----------
@@ -392,7 +606,7 @@
       { name: '문 쾅',       from: 10,  to: 10.2,  add: 40 },  // 무시돼야 함
       { name: '짧은 환호',   from: 25,  to: 28,    add: 27 },  // A
       { name: '1분 응원',    from: 40,  to: 100,   add: 30 },  // A, B
-      { name: '비명',        from: 140, to: 143,   add: 43 },  // C 상태에서 A = D
+      { name: '비명',        from: 105, to: 108,   add: 43 },  // 응원(소리 누적)이 끝난 직후 → C 상태에서 A = D
       { name: '책 떨어짐',   from: 150, to: 150.3, add: 38 },  // 무시돼야 함
     ];
     function demoH(t) {
@@ -471,7 +685,7 @@
           const on = avgW[i] >= s.cAvg;
           if (on && !cOn) {
             cOn = true; cStart = t;
-            events.push({ t, type: 'C', frame: i, msg: `최근 ${s.cWin}분 평균 ${avgW[i].toFixed(1)}dB (기준 ${s.cAvg}dB)` });
+            events.push({ t, type: 'C', frame: i, msg: `최근 ${fmtWin(s.cWin)} 평균 ${avgW[i].toFixed(1)}dB (기준 ${s.cAvg}dB)` });
           } else if (!on && cOn) { cOn = false; cBands.push([cStart, t]); }
         }
         cState[i] = cOn ? 1 : 0;
@@ -576,7 +790,8 @@
           },
           scales: {
             x: { type: 'linear', min: 0, max: result.duration, ticks: { color: text, maxTicksLimit: 10, font: { size: 13 }, callback: v => fmtT(v) }, grid: { display: false } },
-            y: { min: yMin, title: { display: true, text: yTitle, color: text, font: { size: 13 } }, ticks: { color: text, font: { size: 13 }, maxTicksLimit: 6 }, grid: { color: grid } }
+            // y축 폭을 고정해서 위아래로 쌓인 그래프의 시간축(x)이 같은 위치에 오도록 맞춤
+            y: { min: yMin, afterFit: sc => { sc.width = 72; }, title: { display: true, text: yTitle, color: text, font: { size: 13 } }, ticks: { color: text, font: { size: 13 }, maxTicksLimit: 6 }, grid: { color: grid } }
           }
         }
       });
@@ -590,12 +805,17 @@
       const step = Math.max(1, Math.ceil(n / 2400));
       const ev = t => r.events.filter(e => e.type === t);
 
-      makeChart('levelChart', [
-        markerDs('급증 경보 (A)', ev('A'), e => r.levels[e.frame], e => e.t, '#eab308', 'triangle', 10),
-        markerDs('복합 위험 (D)', ev('D'), e => r.levels[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
-        markerDs('무시한 충격음', ev('X'), e => r.levels[e.frame], e => e.t, '#64748b', 'crossRot', 10),
-        lineDs('소리 크기', series(r.levels, step, 'max'), '#3b82f6', { borderWidth: 2, backgroundColor: 'rgba(59,130,246,.12)', fill: 'origin' }),
-      ], r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)' })), '소리 크기 (dB)', 0);
+      // 그래프 1(소리 크기)은 ②미분·③적분·④시연 탭에 각각 한 장씩 (데이터셋은 차트마다 새로 만듦)
+      const levelLine = series(r.levels, step, 'max');
+      for (const id of ['levelChart', 'levelChart2', 'levelChart3']) {
+        makeChart(id, [
+          markerDs('급증 경보 (A)', ev('A'), e => r.levels[e.frame], e => e.t, '#eab308', 'triangle', 10),
+          markerDs('복합 위험 (D)', ev('D'), e => r.levels[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
+          markerDs('무시한 충격음', ev('X'), e => r.levels[e.frame], e => e.t, '#64748b', 'crossRot', 10),
+          lineDs('소리 크기', levelLine.map(p => ({ ...p })), '#3b82f6', { borderWidth: 2, backgroundColor: 'rgba(59,130,246,.12)', fill: 'origin' }),
+        ], r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)' })), '소리 크기 (dB)', 0);
+      }
+      document.querySelectorAll('.levelSub').forEach(el => el.innerText = `주황 배경 = 큰 소리가 ${s.bDur}초 넘게 이어진 구간 (B 경보)`);
 
       makeChart('slopeChart', [
         markerDs('급증 경보 (A)', ev('A'), e => r.slope[e.onsetFrame], e => e.onset, '#eab308', 'triangle', 10),
@@ -605,16 +825,17 @@
         lineDs('기준선', Array.from({ length: 2 }, (_, k) => ({ x: k * r.duration, y: s.aRate })), '#ef4444', { borderDash: [8, 5], borderWidth: 2.5 }),
       ], [], '커지는 속도 (dB/초)', undefined);
 
-      document.getElementById('leqTitle').innerText = `3. 최근 ${s.cWin}분 동안 쌓인 소리 (적분)`;
+      document.getElementById('leqTitle').innerText = `그래프 3. 최근 ${fmtWin(s.cWin)} 동안 쌓인 소리`;
       makeChart('leqChart', [
         markerDs('C 경보', ev('C'), e => r.avgW[e.frame], e => e.t, '#0ea5e9', 'circle', 9),
         markerDs('복합 위험 (D)', ev('D'), e => r.avgW[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
-        lineDs(`최근 ${s.cWin}분 평균`, series(r.avgW, step), '#0ea5e9', { borderWidth: 3 }),
+        lineDs(`최근 ${fmtWin(s.cWin)} 평균`, series(r.avgW, step), '#0ea5e9', { borderWidth: 3 }),
         lineDs('기준치', Array.from({ length: 2 }, (_, k) => ({ x: k * r.duration, y: s.cAvg })), '#ef4444', { borderDash: [8, 5], borderWidth: 2.5 }),
       ], r.cBands.map(([from, to]) => ({ from, to, color: 'rgba(14,165,233,.16)' })), '평균 소리 크기 (dB)', undefined);
       updateCHelper();
 
       renderSummary(s);
+      renderIntroSummary(s);
       renderEvents();
       updateLive(cursorTime ?? 0, cursorTime !== null);
     }
@@ -647,12 +868,24 @@
       const d = r.events.find(e => e.type === 'D');
       if (c && d) {
         note.className = 'text-sm rounded-xl px-4 py-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-slate-800 dark:text-slate-100';
-        note.innerHTML = `<b class="text-sky-700 dark:text-sky-300">${fmtT(c.t)}</b> 최근 ${s.cWin}분 평균이 <b>${r.avgW[c.frame].toFixed(1)}dB</b>로 기준치 ${s.cAvg}dB를 넘어 <b>C 누적 피로</b> 상태가 됩니다.
+        note.innerHTML = `<b class="text-sky-700 dark:text-sky-300">${fmtT(c.t)}</b> 최근 ${fmtWin(s.cWin)} 평균이 <b>${r.avgW[c.frame].toFixed(1)}dB</b>로 기준치 ${s.cAvg}dB를 넘어 <b>C 누적 피로</b> 상태가 됩니다.
           → 이 상태에서 <b class="text-red-600 dark:text-red-400">${fmtT(d.onset)}</b> 비명으로 급증(A)이 생겨 <b class="text-red-600 dark:text-red-400">D 복합 위험 사이렌</b>이 울립니다.`;
       } else {
         note.className = 'text-sm rounded-xl px-4 py-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-slate-800 dark:text-slate-100';
-        note.innerHTML = `지금 설정에서는 비명 때 C 누적 피로 상태가 아니어서 D 복합 위험이 생기지 않습니다. 최근 ${s.cWin}분 평균이 기준치 ${s.cAvg}dB를 넘어야 합니다. 기본값(2분, 58dB)으로 두면 D가 나옵니다.`;
+        note.innerHTML = `지금 설정에서는 비명 때 C 누적 피로 상태가 아니어서 D 복합 위험이 생기지 않습니다. 최근 ${fmtWin(s.cWin)} 평균이 기준치 ${s.cAvg}dB를 넘어야 합니다.`;
       }
+    }
+
+    // 소개 탭 개요 카드: 기준값과 D 발생 시각을 현재 설정·분석 결과로 채움(설정을 바꿔도 낡은 숫자가 남지 않게)
+    function renderIntroSummary(s) {
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+      set('ov_aRate', s.aRate);
+      set('ov_aHold', (+s.aHold).toFixed(1));
+      set('ov_cAvg', s.cAvg);
+      set('ov_bDb', s.bDb);
+      document.querySelectorAll('.ov_win').forEach(el => el.innerText = Math.round(s.cWin * 60));
+      const d = result.events.find(e => e.type === 'D');
+      set('ov_dExample', d ? `${fmtT(d.onset)} 급증 ➜ ${fmtT(d.t)} 사이렌` : '현재 설정에서는 발생하지 않음');
     }
 
     function renderSummary(s) {
@@ -666,7 +899,7 @@
       let max = 0, sumE = 0;
       for (const v of r.levels) { if (v > max) max = v; sumE += Math.pow(10, v / 10); }
       const leqAll = 10 * Math.log10(sumE / r.levels.length);
-      const warn = r.wFrames > r.levels.length ? `<div class="text-amber-600 dark:text-amber-400">⚠ 누적 구간(${s.cWin}분)이 분석 길이보다 길어 C는 판정되지 않았습니다.</div>` : '';
+      const warn = r.wFrames > r.levels.length ? `<div class="text-amber-600 dark:text-amber-400">⚠ 누적 구간(${fmtWin(s.cWin)})이 분석 길이보다 길어 C는 판정되지 않았습니다.</div>` : '';
       document.getElementById('summaryStats').innerHTML = `
         <div>전체 등가소음도 Leq <b class="font-mono text-slate-700 dark:text-slate-200">${leqAll.toFixed(1)} dB</b> · 최고 <b class="font-mono text-slate-700 dark:text-slate-200">${max.toFixed(1)} dB</b></div>
         <div>걸러낸 충격음 <b class="font-mono text-slate-700 dark:text-slate-200">${count('X')}건</b></div>${warn}`;
@@ -688,6 +921,7 @@
     function updateLive(t, active) {
       if (!result) return;
       const i = Math.min(result.levels.length - 1, Math.max(0, Math.floor(t / FRAME)));
+      document.getElementById('barTime').innerText = fmtT(active ? t : 0);
       document.getElementById('liveTime').innerText = active ? fmtT(t) : '-';
       document.getElementById('liveLevel').innerText = active ? result.Ls[i].toFixed(1) + ' dB' : '-';
       document.getElementById('liveBg').innerText = active ? result.bg[i].toFixed(1) + ' dB' : '-';
@@ -706,7 +940,7 @@
       }
       const banner = document.getElementById('liveBanner');
       let cls = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300', msg;
-      if (!active) msg = '▶ 재생 버튼을 누르면 시간 순서대로 경보 상태가 바뀌고 경보음이 울립니다.';
+      if (!active) msg = '▶ 위쪽 재생 버튼을 누르면 시간 순서대로 경보 상태가 바뀌고 경보음이 울립니다.';
       else if (on.D) { cls = 'bg-red-600 text-white font-bold flash'; msg = '🚨 복합 위험: 이미 오래 시끄러운 상태에서 소리가 다시 폭발했습니다. 현장 확인이 필요합니다.'; }
       else if (on.B) { cls = 'bg-orange-500 text-white font-semibold'; msg = '🟠 큰 소리가 계속되고 있습니다.'; }
       else if (on.A) { cls = 'bg-yellow-400 text-yellow-950 font-semibold'; msg = '🟡 갑자기 소리가 커졌습니다.'; }
@@ -730,7 +964,7 @@
       const playing = isPlaying();
       document.getElementById('playBtn').innerHTML = playing
         ? '<i data-lucide="pause" class="w-4 h-4"></i><span>일시정지</span>'
-        : '<i data-lucide="play" class="w-4 h-4"></i><span>재생하며 경보 듣기</span>';
+        : '<i data-lucide="play" class="w-4 h-4"></i><span>재생</span>';
       lucide.createIcons();
     }
     document.getElementById('playBtn').addEventListener('click', () => {
@@ -837,6 +1071,7 @@
         document.getElementById('fileDuration').innerText = `${Math.floor(d / 60)}분 ${(d % 60).toFixed(1)}초`;
         btnText.innerText = '다른 파일 선택하기';
         renderAll();
+        media.addEventListener('loadedmetadata', fitActivePanel, { once: true });   // 동영상 칸이 생겨 높이가 바뀜
       } catch (err) {
         console.error(err);
         alert('선택한 파일에서 오디오를 추출할 수 없습니다.');
@@ -844,6 +1079,25 @@
       }
       e.target.value = '';
     });
+
+    // ---------- 탭 ----------
+    //   발표 순서: ① 소개·설정 → ② 미분 → ③ 적분 → ④ 복합 경보 시연. 키보드 1~4로도 이동
+    const TABS = ['intro', 'deriv', 'integ', 'alarm'];
+    function showTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === name));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+      // 미분·적분 탭은 화면에 맞게 크기 조절 → 숨겨져 있던 그래프 크기를 다시 맞춤
+      fitActivePanel();
+      requestAnimationFrame(() => { for (const k in charts) charts[k].resize(); });
+    }
+    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+    document.addEventListener('keydown', e => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea' || e.ctrlKey || e.altKey || e.metaKey) return;
+      const k = parseInt(e.key, 10);
+      if (k >= 1 && k <= TABS.length) showTab(TABS[k - 1]);
+    });
+    showTab('intro');
 
     loadDemo();
   </script>
