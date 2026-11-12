@@ -739,9 +739,28 @@
           if (x2 > x1) { ctx.save(); ctx.fillStyle = b.color; ctx.fillRect(x1, top, x2 - x1, bottom - top); ctx.restore(); }
         }
       },
-      afterDatasetsDraw(chart) {
-        if (cursorTime === null) return;
+      afterDatasetsDraw(chart, args, opts) {
         const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
+        // 배경 구간 이름표 (예: "지속 고소음(B)") — 구간 왼쪽 위, 그래프 선 위에 반투명 바탕으로
+        const dark = document.documentElement.classList.contains('dark');
+        for (const b of (opts.bands || [])) {
+          if (!b.label) continue;
+          const x1 = Math.max(left, x.getPixelForValue(b.from));
+          const x2 = Math.min(right, x.getPixelForValue(b.to));
+          ctx.save();
+          ctx.font = '700 13px "Pretendard", "Malgun Gothic", sans-serif';
+          const text = (x2 - x1) >= ctx.measureText(b.label).width + 16 ? b.label : (b.short || '');
+          if (text) {
+            const w = ctx.measureText(text).width + 12, h = 20, lx = x1 + 4, ly = top + 4;
+            ctx.fillStyle = dark ? 'rgba(15,23,42,.82)' : 'rgba(255,255,255,.88)';
+            ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly, w, h, 6) : ctx.rect(lx, ly, w, h); ctx.fill();
+            ctx.fillStyle = dark ? (b.labelColorDark || '#fff') : (b.labelColor || '#000');
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, lx + 6, ly + h / 2 + 1);
+          }
+          ctx.restore();
+        }
+        if (cursorTime === null) return;
         const px = x.getPixelForValue(cursorTime);
         if (px < left || px > right) return;
         ctx.save();
@@ -813,9 +832,10 @@
           markerDs('복합 위험 (D)', ev('D'), e => r.levels[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
           markerDs('무시한 충격음', ev('X'), e => r.levels[e.frame], e => e.t, '#64748b', 'crossRot', 10),
           lineDs('소리 크기', levelLine.map(p => ({ ...p })), '#3b82f6', { borderWidth: 2, backgroundColor: 'rgba(59,130,246,.12)', fill: 'origin' }),
-        ], r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)' })), '소리 크기 (dB)', 0);
+        ], r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)',
+          label: '🟠 지속 고소음(B)', short: 'B', labelColor: '#c2410c', labelColorDark: '#fdba74' })), '소리 크기 (dB)', 0);
       }
-      document.querySelectorAll('.levelSub').forEach(el => el.innerText = `주황 배경 = 큰 소리가 ${s.bDur}초 넘게 이어진 구간 (B 경보)`);
+      document.querySelectorAll('.levelSub').forEach(el => el.innerText = `주황 배경 = 지속 고소음(B): 큰 소리가 ${s.bDur}초 넘게 이어진 구간`);
 
       makeChart('slopeChart', [
         markerDs('급증 경보 (A)', ev('A'), e => r.slope[e.onsetFrame], e => e.onset, '#eab308', 'triangle', 10),
