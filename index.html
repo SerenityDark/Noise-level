@@ -315,7 +315,7 @@
         </div>
         <div class="glass-card rounded-2xl shadow-sm flex flex-col min-h-0 min-w-0 fit-card">
           <div class="flex flex-wrap items-baseline gap-x-3"><h3 id="leqTitle" class="fit-h3 font-black text-slate-900 dark:text-white">그래프 3. 최근 30초 동안 쌓인 소리</h3>
-            <p class="fit-sub text-slate-600 dark:text-slate-300">파란 선 = 최근 구간 평균 · 빨간 점선(기준치)을 넘는 순간 B 경보 · 파란 배경 = 기준치를 넘은 구간</p></div>
+            <p id="leqSub" class="fit-sub text-slate-600 dark:text-slate-300">파란 선 = 최근 구간 평균 · 빨간 점선(기준치)을 넘는 순간 B 경보 · 파란 배경 = 기준치를 넘은 구간 · 회색 점선 박스 = 처음 30초는 평균 낼 자료가 모자라 선이 없음</p></div>
           <div class="chart-box relative flex-1 min-h-0"><canvas id="leqChart"></canvas></div>
         </div>
       </div>
@@ -356,7 +356,7 @@
       <div class="grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] gap-4 lg:flex-1 lg:min-h-0">
         <div class="lg:col-span-7 glass-card rounded-2xl p-4 shadow-sm flex flex-col min-h-0 min-w-0">
           <h3 class="text-lg font-black text-slate-900 dark:text-white">소리 크기 L(t)와 경보 위치</h3>
-          <p class="levelSub text-xs text-slate-600 dark:text-slate-300">▲ 급증 경보(A) · ◆ 복합 위험(C) · ✕ 무시한 순간 소리</p>
+          <p id="alarmSub" class="text-xs text-slate-600 dark:text-slate-300">파란 배경 = B 누적 피로 상태 · 그 안에서 ▲급증(A)이 생기면 ◆복합 위험(C)</p>
           <div class="relative h-72 lg:h-auto lg:flex-1 min-h-0 mt-2"><canvas id="levelChart3"></canvas></div>
         </div>
         <div class="lg:col-span-5 glass-card rounded-2xl p-4 shadow-sm flex flex-col gap-2 min-h-0 min-w-0">
@@ -392,6 +392,7 @@
     };
     // 보조 지표 D 표시 여부 (설정의 "보조 지표 D 보기"). 꺼져 있으면 D는 계산만 하고 화면·기록·경보음에서 뺌
     let showD = false;
+    const isDark = () => document.documentElement.classList.contains('dark');
     const visibleTypes = () => showD ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C'];
 
     lucide.createIcons();
@@ -758,7 +759,14 @@
         for (const b of (opts.bands || [])) {
           const x1 = Math.max(left, x.getPixelForValue(b.from));
           const x2 = Math.min(right, x.getPixelForValue(b.to));
-          if (x2 > x1) { ctx.save(); ctx.fillStyle = b.color; ctx.fillRect(x1, top, x2 - x1, bottom - top); ctx.restore(); }
+          if (x2 > x1) {
+            ctx.save(); ctx.fillStyle = b.color; ctx.fillRect(x1, top, x2 - x1, bottom - top);
+            if (b.border) {   // 점선 테두리 박스 (예: 평균 생성 전 기간)
+              ctx.strokeStyle = b.border; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+              ctx.strokeRect(x1 + 0.75, top + 0.75, x2 - x1 - 1.5, bottom - top - 1.5);
+            }
+            ctx.restore();
+          }
         }
       },
       afterDatasetsDraw(chart, args, opts) {
@@ -773,7 +781,8 @@
           ctx.font = '700 13px "Pretendard", "Malgun Gothic", sans-serif';
           const text = (x2 - x1) >= ctx.measureText(b.label).width + 16 ? b.label : (b.short || '');
           if (text) {
-            const w = ctx.measureText(text).width + 12, h = 20, lx = x1 + 4, ly = top + 4;
+            // labelRow: 이름표가 겹치지 않게 줄을 내림 (0 = 맨 위 줄)
+            const w = ctx.measureText(text).width + 12, h = 20, lx = x1 + 4, ly = top + 4 + (b.labelRow || 0) * 24;
             ctx.fillStyle = dark ? 'rgba(15,23,42,.82)' : 'rgba(255,255,255,.88)';
             ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly, w, h, 6) : ctx.rect(lx, ly, w, h); ctx.fill();
             ctx.fillStyle = dark ? (b.labelColorDark || '#fff') : (b.labelColor || '#000');
@@ -854,12 +863,21 @@
           markerDs('복합 위험 (C)', ev('C'), e => r.levels[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
           markerDs('무시한 충격음', ev('X'), e => r.levels[e.frame], e => e.t, '#64748b', 'crossRot', 10),
           lineDs('소리 크기', levelLine.map(p => ({ ...p })), '#3b82f6', { borderWidth: 2, backgroundColor: 'rgba(59,130,246,.12)', fill: 'origin' }),
-        ], showD ? r.dBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)',
-          label: '🟠 지속 고소음(D·보조)', short: 'D', labelColor: '#c2410c', labelColorDark: '#fdba74' })) : [], '소리 크기 (dB)', 0);
+        ], [
+          // ④ 복합 경보 탭: B(누적 피로) 상태를 파란 배경으로 → 그 안에서 급증하면 C임을 한눈에
+          ...(id === 'levelChart3' ? r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(14,165,233,.16)',
+            label: '🔵 누적 피로(B) 상태', short: 'B', labelColor: '#0369a1', labelColorDark: '#7dd3fc' })) : []),
+          ...(showD ? r.dBands.map(([from, to]) => ({ from, to, color: 'rgba(249,115,22,.18)',
+            label: '🟠 지속 고소음(D·보조)', short: 'D', labelColor: '#c2410c', labelColorDark: '#fdba74',
+            labelRow: id === 'levelChart3' ? 1 : 0 })) : []),
+        ], '소리 크기 (dB)', 0);
       }
       document.querySelectorAll('.levelSub').forEach(el => el.innerText = showD
         ? `주황 배경 = 보조 지표 D 지속 고소음: 큰 소리가 ${s.T}초 넘게 이어진 구간`
         : '▲ 급증 경보(A) · ◆ 복합 위험(C) · ✕ 무시한 순간 소리');
+      document.getElementById('alarmSub').innerText =
+        `파란 배경 = B 누적 피로 상태(최근 ${fmtWin(s.T)} 평균 ≥ ${s.bAvg}dB) · 그 안에서 ▲급증(A)이 생기면 ◆복합 위험(C)`
+        + (showD ? ' · 주황 배경 = 보조 지표 D' : '');
 
       makeChart('slopeChart', [
         markerDs('급증 경보 (A)', ev('A'), e => r.slope[e.onsetFrame], e => e.onset, '#eab308', 'triangle', 10),
@@ -875,7 +893,16 @@
         markerDs('복합 위험 (C)', ev('C'), e => r.avgW[e.frame], e => e.t, '#dc2626', 'rectRot', 12),
         lineDs(`최근 ${fmtWin(s.T)} 평균`, series(r.avgW, step), '#0ea5e9', { borderWidth: 3 }),
         lineDs('기준치', Array.from({ length: 2 }, (_, k) => ({ x: k * r.duration, y: s.bAvg })), '#ef4444', { borderDash: [8, 5], borderWidth: 2.5 }),
-      ], r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(14,165,233,.16)' })), '평균 소리 크기 (dB)', undefined);
+      ], [
+        // 평균 생성 전 기간: 처음 T초는 "최근 T초"를 채울 자료가 없어 평균(파란 선)을 계산하지 않음
+        { from: 0, to: Math.min(s.T, r.duration), color: isDark() ? 'rgba(148,163,184,.14)' : 'rgba(100,116,139,.10)',
+          border: isDark() ? 'rgba(148,163,184,.7)' : 'rgba(100,116,139,.6)',
+          label: s.T > r.duration ? `⏳ 평균 생성 전 (자료가 ${fmtWin(s.T)}보다 짧음)` : `⏳ 평균 생성 전 (처음 ${fmtWin(s.T)})`,
+          short: '⏳', labelColor: '#475569', labelColorDark: '#cbd5e1' },
+        ...r.bBands.map(([from, to]) => ({ from, to, color: 'rgba(14,165,233,.16)' })),
+      ], '평균 소리 크기 (dB)', undefined);
+      document.getElementById('leqSub').innerText =
+        `파란 선 = 최근 구간 평균 · 빨간 점선(기준치)을 넘는 순간 B 경보 · 파란 배경 = 기준치를 넘은 구간 · 회색 점선 박스 = 처음 ${fmtWin(s.T)}는 평균 낼 자료가 모자라 선이 없음`;
       updateBHelper();
 
       renderSummary(s);
